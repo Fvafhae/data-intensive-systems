@@ -109,7 +109,7 @@ spark
 # < S3, S1, 71, Response, 1978 >
 
 # Lets create dummy data
-dummy_data = spark.createDataFrame([
+input_data = spark.createDataFrame([
 (None, "MainServer1", 0, "Request", 0),
 ("MainServer1", "Authentication1", 1, "Request", 0),
 ("Authentication1", "MainServer1", 2, "Response", 0),
@@ -128,15 +128,16 @@ dummy_data = spark.createDataFrame([
 ("MainServer2", "TravelCardVisa1", 22, "Response", 0)
 ], ["Caller", "Target", "Time", "EventType", "PID"])
 
-dummy_data.show()
+input_data.show()
+input_data.cache()
 
 
 # Get distinct server names from the both columns
 # Caller servers
-callers = dummy_data.select("Caller")
+callers = input_data.select("Caller")
 
 # Add target servers too.
-distinct_servers = callers.union(dummy_data.select("Target")).distinct()
+distinct_servers = callers.union(input_data.select("Target")).distinct()
 distinct_servers.show()
 
 # Assign similarity function as a user defined function (udf) for use in spark
@@ -151,10 +152,10 @@ query = """
     from distinct_servers as a
     inner join distinct_servers as b
     on 1 = 1 and a.Caller != "None" and b.Caller != "None"
-
 """
 
 
+# This similarity calculation runs in parallel, OK.
 cross_joined_server_names = spark.sql(query)
 cross_joined_server_names = cross_joined_server_names.withColumn("Similarity", jaro_udf(cross_joined_server_names.CallerName1, cross_joined_server_names.CallerName2))
 cross_joined_server_names.show()
@@ -162,6 +163,7 @@ cross_joined_server_names.show()
 # Next, we should replace the similar server names
 # We should first filter higher similarity rows based on a threshold
 # TODO: We should choose a threshold for server name similarity score
+# Since we decrease the cross-product matrix size based on a similaritry threshold, we can turn this into a dataframe with no problem.
 string_sim_th = 0.7
 cross_joined_server_names = cross_joined_server_names.where(cross_joined_server_names.Similarity > string_sim_th)
 cross_joined_server_names.show(truncate=100)
@@ -172,6 +174,7 @@ cross_joined_server_names.show(truncate=100)
 # Example:
 # CreditCardMasterCard1: CreditCardMasterCard2, CreditCardMasterCard3, CreditCardMaestro1
 # All these servers will be replaced with CreditCardMasterCard1 in the input
+# It's OK for this function to run sequentially since we've already made the cross-product matrix quite small.
 def similarity_assignment(df):
     # main dictionary
     set_dict = {}
@@ -213,9 +216,11 @@ def similarity_assignment(df):
 # Now that  we've written this function, we need to apply it to the input file.
 # Can we send different parts of the input file to different cores (transform workers) and collect the results and append them?
 
-
-collapsed_data = dummy_data.na.replace(similarity_assignment(cross_joined_server_names.toPandas()))
+# The replacement runs in parallel too. Hence the huge input file is going to be processed in parallel.
+# This is the second time we read the input data, better cache it.
+collapsed_data = input_data.na.replace(similarity_assignment(cross_joined_server_names.toPandas()))
 collapsed_data.show(truncate=100)
+collapsed_data.cache()
 
 print(similarity_assignment(cross_joined_server_names.toPandas()))
 for x, y in similarity_assignment(cross_joined_server_names.toPandas()).items():
