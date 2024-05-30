@@ -12,7 +12,6 @@ CONFIG = {
     "CoreCount": 8
 }
 
-
 # implement Jaro-Winkler similarity as a function
 # we can pass this function in spark.map
 
@@ -173,7 +172,7 @@ cross_joined_server_names.show(truncate=100)
 # Example:
 # CreditCardMasterCard1: CreditCardMasterCard2, CreditCardMasterCard3, CreditCardMaestro1
 # All these servers will be replaced with CreditCardMasterCard1 in the input
-def collapser(df):
+def similarity_assignment(df):
     # main dictionary
     set_dict = {}
     # a set of handled servers
@@ -209,14 +208,15 @@ def collapser(df):
         for value in set_dict[key]:
             out_dict[value] = key
 
-    print(out_dict)
-
-    return set_dict
+    return out_dict
 
 # Now that  we've written this function, we need to apply it to the input file.
 # Can we send different parts of the input file to different cores (transform workers) and collect the results and append them?
 
 
-print(collapser(cross_joined_server_names.toPandas()))
+collapsed_data = dummy_data.na.replace(similarity_assignment(cross_joined_server_names.toPandas()))
+collapsed_data.show(truncate=100)
 
-
+print(similarity_assignment(cross_joined_server_names.toPandas()))
+for x, y in similarity_assignment(cross_joined_server_names.toPandas()).items():
+    print(f"{x}: {y}")
