@@ -7,6 +7,11 @@ import math as m
 from pyspark.sql.types import FloatType
 import pandas as pd
 
+# Config settings:
+CONFIG = {
+    "CoreCount": 8
+}
+
 
 # implement Jaro-Winkler similarity as a function
 # we can pass this function in spark.map
@@ -80,7 +85,7 @@ def jaro_winkler_similarity(s1, s2, winkler_factor=0.1, matching_prefix_length =
 # create the session
 conf = SparkConf()
 conf.setAppName("string_similarity")
-conf.setMaster("local[1]")
+conf.setMaster(f"local[{CONFIG['CoreCount']}]")
 conf.set("spark.driver.memory", "2G")
 conf.set("spark.driver.maxResultSize", "2g")
 conf.set("spark.executor.memory", "1G")
@@ -146,7 +151,7 @@ query = """
     select a.Caller as CallerName1, b.Caller as CallerName2
     from distinct_servers as a
     inner join distinct_servers as b
-    on 1 = 1 and a.Caller != b.Caller
+    on 1 = 1 and a.Caller != "None" and b.Caller != "None"
 
 """
 
@@ -158,12 +163,13 @@ cross_joined_server_names.show()
 # Next, we should replace the similar server names
 # We should first filter higher similarity rows based on a threshold
 # TODO: We should choose a threshold for server name similarity score
-string_sim_th = 0.5
+string_sim_th = 0.7
 cross_joined_server_names = cross_joined_server_names.where(cross_joined_server_names.Similarity > string_sim_th)
 cross_joined_server_names.show(truncate=100)
 
 
 # We create a dictionary of servers, using it we'll call each server type with 1 server's name
+# TODO: We can also think if we can do this in a partitioned manner.
 # Example:
 # CreditCardMasterCard1: CreditCardMasterCard2, CreditCardMasterCard3, CreditCardMaestro1
 # All these servers will be replaced with CreditCardMasterCard1 in the input
@@ -172,6 +178,8 @@ def collapser(df):
     set_dict = {}
     # a set of handled servers
     handled = set()
+    # output dict, with this, we wont need to iterate through all the sets while performing the actual replacement
+    out_dict = {}
 
     i = 0
     # For each row in the similarity matrix
@@ -197,7 +205,17 @@ def collapser(df):
                 handled.add(row[1]["CallerName1"])
                 handled.add(row[1]["CallerName2"])
 
+    for key in set_dict.keys():
+        for value in set_dict[key]:
+            out_dict[value] = key
+
+    print(out_dict)
+
     return set_dict
+
+# Now that  we've written this function, we need to apply it to the input file.
+# Can we send different parts of the input file to different cores (transform workers) and collect the results and append them?
+
 
 print(collapser(cross_joined_server_names.toPandas()))
 
