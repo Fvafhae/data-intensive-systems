@@ -5,6 +5,7 @@ from pyspark.sql import *
 import pyspark.sql.functions as f
 import math as m
 from pyspark.sql.types import FloatType
+import pandas as pd
 
 
 # implement Jaro-Winkler similarity as a function
@@ -69,7 +70,8 @@ def jaro_winkler_similarity(s1, s2, winkler_factor=0.1, matching_prefix_length =
     # now we can calculate Jaro-Winkler similarity:
     jaro_winkler = jaro + (winkler_factor * matching_prefix_size * (1 - jaro))
 
-    #return jaro_winkler
+    # we calculated JaroWinkler too. We can use either.
+    # return jaro_winkler
     return jaro
 
 
@@ -117,35 +119,86 @@ dummy_data = spark.createDataFrame([
 ("MainServer1", "CreditCardVisa2", 11, "Request", 0),
 ("CreditCardVisa2", "MainServer1", 12, "Response", 0),
 ("MainServer2", "CreditCardMasterCard2", 20, "Request", 0),
-("CreditCardMasterCard2", "MainServer2", 22, "Response", 0)
+("CreditCardMasterCard2", "MainServer2", 22, "Response", 0),
+("TravelCardVisa1", "MainServer2", 22, "Request", 0),
+("MainServer2", "TravelCardVisa1", 22, "Response", 0)
 ], ["Caller", "Target", "Time", "EventType", "PID"])
 
 dummy_data.show()
 
 
 # Get distinct server names from the both columns
+# Caller servers
 callers = dummy_data.select("Caller")
 
+# Add target servers too.
 distinct_servers = callers.union(dummy_data.select("Target")).distinct()
 distinct_servers.show()
 
+# Assign similarity function as a user defined function (udf) for use in spark
 jaro_udf = f.udf(jaro_winkler_similarity, FloatType())
 
 # Create SQL view
 distinct_servers.createOrReplaceTempView("distinct_servers")
 
+# Cartesian product of the servers
 query = """
     select a.Caller as CallerName1, b.Caller as CallerName2
     from distinct_servers as a
     inner join distinct_servers as b
-    on 1 = 1
-    where a.Caller != "None" and b.Caller != "None"
+    on 1 = 1 and a.Caller != b.Caller
+
 """
 
+
 cross_joined_server_names = spark.sql(query)
-cross_joined_server_names = cross_joined_server_names.withColumn("JaroWinkler", jaro_udf(cross_joined_server_names.CallerName1, cross_joined_server_names.CallerName2))
+cross_joined_server_names = cross_joined_server_names.withColumn("Similarity", jaro_udf(cross_joined_server_names.CallerName1, cross_joined_server_names.CallerName2))
 cross_joined_server_names.show()
 
 # Next, we should replace the similar server names
+# We should first filter higher similarity rows based on a threshold
+# TODO: We should choose a threshold for server name similarity score
+string_sim_th = 0.5
+cross_joined_server_names = cross_joined_server_names.where(cross_joined_server_names.Similarity > string_sim_th)
+cross_joined_server_names.show(truncate=100)
+
+
+# We create a dictionary of servers, using it we'll call each server type with 1 server's name
+# Example:
+# CreditCardMasterCard1: CreditCardMasterCard2, CreditCardMasterCard3, CreditCardMaestro1
+# All these servers will be replaced with CreditCardMasterCard1 in the input
+def collapser(df):
+    # main dictionary
+    set_dict = {}
+    # a set of handled servers
+    handled = set()
+
+    i = 0
+    # For each row in the similarity matrix
+    for row in df.iterrows():
+        # initialize the dict structure so we can iterate through it
+        # if the first row of the matrix
+        if i == 0:
+            # Add servername as a key and add the second server to its set
+            set_dict[row[1]["CallerName1"]] = set([row[1]["CallerName2"]])
+            # Add both servers to the handled servers list
+            handled.add(row[1]["CallerName1"])
+            handled.add(row[1]["CallerName2"])
+            i = 1
+        else:
+            # if the first server exists as a key but the second server is not in its set,
+            # Add the second server to the first's set
+            if row[1]["CallerName1"] in set_dict.keys() and row[1]["CallerName2"] not in set_dict[row[1]["CallerName1"]]:
+                set_dict[row[1]["CallerName1"]].add(row[1]["CallerName2"])
+                handled.add(row[1]["CallerName2"])
+            # If both servers were never handled create a new entry in the dict
+            elif row[1]["CallerName1"] not in set_dict.keys() and row[1]["CallerName1"] not in handled and row[1]["CallerName2"] not in handled:
+                set_dict[row[1]["CallerName1"]] = set([row[1]["CallerName2"]])
+                handled.add(row[1]["CallerName1"])
+                handled.add(row[1]["CallerName2"])
+
+    return set_dict
+
+print(collapser(cross_joined_server_names.toPandas()))
 
 
