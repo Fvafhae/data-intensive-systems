@@ -4,12 +4,14 @@ from pyspark.sql import SparkSession
 from pyspark.sql import *
 import pyspark.sql.functions as f
 import math as m
-from pyspark.sql.types import FloatType
+from pyspark.sql.types import ArrayType, FloatType, StructType, StructField, IntegerType
 import pandas as pd
 from pyspark.ml.feature import MinHashLSH
-from pyspark.ml.linalg import Vectors
+from pyspark.ml.linalg import Vectors, DenseVector
 from pyspark.sql.functions import col
 import random
+from pyspark.sql.functions import udf
+import numpy as np
 
 
 ##### What this code does #####
@@ -27,7 +29,8 @@ import random
 # Config settings:
 CONFIG = {
     "CoreCount": 8,
-    "MinHashSignatureSize": 20
+    "MinHashSignatureSize": 20,
+    "BandCount": 3
 }
 
 ### Stop spark if you have created spark session before
@@ -85,7 +88,46 @@ df.show(truncate=1000)
 mh = MinHashLSH(inputCol = "shinglings", outputCol="signatures", numHashTables=CONFIG["MinHashSignatureSize"])
 # Fit minhash model
 model = mh.fit(df)
+# Get model results on the data frame: get the signatures:
+signature_frame = model.transform(df)
+signature_frame.show(truncate=1000)
 
 
+# 3. Perform LSH bucketing by using xxHash library and band-ing strategy.
+
+# 3.1. Create the bands from the sparse vecotors.
+# There's nothing about slicing sparse vectors in PySpark documentation.
+# On the internet the only approach I could find is first creating actual lists from
+    # the sparse vectors, then slicing them. So that's what I'll do now.
+
+# function to convert sparse vectors to lists:
+@udf (returnType=ArrayType(FloatType()))
+def denser(sparse_vector):
+    return sparse_vector.toArray().tolist()
+
+df = df.withColumn("dense_shinglings", denser(df.shinglings))
+df.show(truncate=1000)
 
 
+# function to split a list into bands:
+@udf(returnType=ArrayType(ArrayType(FloatType())))
+def band_maker(whole_list):
+    band_count = CONFIG["BandCount"]
+    bands = []
+    hash_values = []
+    band_size = m.ceil(len(whole_list) / band_count)
+    
+    if len(whole_list) > band_count:
+        for i in range(band_count):
+            start = i * band_size
+            end = min(((i+1)*band_size), len(whole_list))
+            bands.append(whole_list[start:end])
+
+    return bands
+
+df = df.withColumn("bands", band_maker(df.dense_shinglings)).drop(df.dense_shinglings)
+df.show(truncate=1000)
+
+
+a = [1]
+print(band_maker(a))
