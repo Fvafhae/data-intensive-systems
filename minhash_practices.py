@@ -39,7 +39,7 @@ dfA.show(truncate=100)
 dataB = [(3, Vectors.sparse(10, [1, 3, 5, 6], [1.0, 1.0, 1.0, 1.0]),),
          (4, Vectors.sparse(10, [2, 3, 5, 7], [1.0, 1.0, 1.0, 1.0]),),
          (5, Vectors.sparse(10, [1, 2, 4, 8], [1.0, 1.0, 1.0, 1.0]),),
-         (5, Vectors.sparse(10, [1, 2, 4, 8], [1.0, 1.0, 1.0, 1.0]),)]
+         (6, Vectors.sparse(10, [1, 2, 4, 9], [1.0, 1.0, 1.0, 1.0]),)]
 dfB = spark.createDataFrame(dataB, ["id", "features"])
 
 dfB.show(truncate=100)
@@ -50,12 +50,13 @@ print(key)
 # numHashTables: how many hash functions we're going to use. 
 # As we increase the number of hash functions, number of false negatives decrease,
 # Because if 2 sets dont fall into the same bucket for one hash function, they might for another hash function
-mh = MinHashLSH(inputCol="features", outputCol="hashes", numHashTables=1)
+mh = MinHashLSH(inputCol="features", outputCol="hashes", numHashTables=2)
 model = mh.fit(dfA)
 
 # Feature Transformation
 print("The hashed dataset where hashed values are stored in the column 'hashes':")
 model.transform(dfA).show(truncate=1000)
+model.transform(dfB).show(truncate=1000)
 
 # Compute the locality sensitive hashes for the input rows, then perform approximate
 # similarity join.
@@ -63,7 +64,7 @@ model.transform(dfA).show(truncate=1000)
 # model.approxSimilarityJoin(transformedA, transformedB, 0.6)
 # distance = 1 - JaccardSim
 print("Approximately joining dfA and dfB on distance smaller than 0.6:")
-similars = model.approxSimilarityJoin(dfA, dfB, 0.6, distCol="JaccardDistance")\
+similars = model.approxSimilarityJoin(dfA, dfB, 1.0, distCol="JaccardDistance")\
     .select(col("datasetA.id").alias("idA"),
             col("datasetB.id").alias("idB"),
             col("JaccardDistance"))
