@@ -13,6 +13,11 @@ import random
 from pyspark.sql.functions import udf
 import numpy as np
 import xxhash
+import time
+
+# TODO: See where you can drop which columns.
+# TODO: We implemented band bucketing but see speed and accuracy with/without band bucketing
+
 
 ##### What this code does #####
 
@@ -22,15 +27,12 @@ import xxhash
 # 4. Calculate similarity scores for vectors that happened to be in the 
     # same bucket for any band.
 
-
-
-
-
 # Config settings:
 CONFIG = {
     "CoreCount": 8,
     "MinHashSignatureSize": 20,
-    "BandCount": 3
+    "BandCount": 3,
+    "JaccadDistThreshold": 1.0
 }
 
 ### Stop spark if you have created spark session before
@@ -39,9 +41,9 @@ CONFIG = {
 conf = SparkConf()
 conf.setAppName("minhash")
 conf.setMaster(f"local[{CONFIG['CoreCount']}]")
-conf.set("spark.driver.memory", "2G")
-conf.set("spark.driver.maxResultSize", "2g")
-conf.set("spark.executor.memory", "1G")
+conf.set("spark.driver.memory", "4G")
+conf.set("spark.driver.maxResultSize", "4g")
+conf.set("spark.executor.memory", "4G")
 sc = pyspark.SparkContext(conf=conf)
 spark = SparkSession.builder.getOrCreate()
 spark
@@ -54,6 +56,7 @@ def vector_creator(vector_count = 100, vector_length = 20):
 
     # at most half of the vector can be full, at least 1 1.:
     one_count = random.randint(1, int(vector_length / 2))
+    # one_count = 15
     
     # for each vector
     for i in range(vector_count):
@@ -76,7 +79,7 @@ vector_list = vector_creator()
 
 # turn vector list to a dataframe
 df = spark.createDataFrame(vector_list, ["id", "shinglings"])
-df.show(truncate=1000)
+df.show(truncate=False)
 
 # TODO: Do I need to create a key vector?
 # TODO: Maybe we should use approxSimilarityJoin only, not neighbors
@@ -85,15 +88,13 @@ df.show(truncate=1000)
 # 2. Perform only the signature creation part of minhashing.
 
 # Minhash model parameters set.
-mh = MinHashLSH(inputCol = "shinglings", outputCol="signatures", numHashTables=CONFIG["MinHashSignatureSize"])
+mh = MinHashLSH(inputCol = "shinglings", outputCol="signatures", numHashTables=CONFIG["MinHashSignatureSize"], seed=0)
 # Fit minhash model
 model = mh.fit(df)
-# Get model results on the data frame: get the signatures:
-signature_frame = model.transform(df)
-signature_frame.show(truncate=1000)
+# Get model results on the data frame: get the signatures and cache, we'll use this frame a lot:
+# TODO: I might not cache here, this is not the bottle neck.
+signature_frame = model.transform(df).cache()
 
-# cache the signature_frame. we're gonna use it a lot.
-signature_frame.cache()
 
 
 # 3. Perform LSH bucketing by using xxHash library and band-ing strategy.
@@ -106,13 +107,22 @@ signature_frame.cache()
 # We use xxhash for band hashing since it is one of the fastest:
 # xxhash benchmark: https://xxhash.com/
 
+# TODO: Its not clear if minhashLSH uses band bucketing!!!
+# TODO: We must try with and without it.
+# This page says it does not use band bucketing: https://stackoverflow.com/questions/65259348/is-the-number-of-rows-always-1-in-each-band-in-the-spark-implementation-of-minha
+# But GPT says it does and numHashTables is actually the band count. This doesnt make sense.
+# I strongly believe that the hash values returned by MinHashLSH function are the signatures.
+# One way to know is to try both and compare the times.
+# This link is Spark team's implementation of LSH. I dont see any band bucketing: 
+# https://github.com/apache/spark/blob/master/mllib/src/main/scala/org/apache/spark/ml/feature/MinHashLSH.scala
+
 # function to convert sparse vectors to lists:
 @udf (returnType=ArrayType(FloatType()))
 def denser(sparse_vector):
     return sparse_vector.toArray().tolist()
 
 signature_frame = signature_frame.withColumn("dense_shinglings", denser(df.shinglings))
-signature_frame.show(truncate=1000)
+# signature_frame.show(truncate=1000)
 
 
 # TODO: Return a single list, anly hashes, not the tuple here.
@@ -152,8 +162,112 @@ signature_frame = signature_frame.withColumn("bands_hashes", band_maker(signatur
 signature_frame = signature_frame.withColumn("band_hashes", signature_frame["bands_hashes"].getItem("band_hashes")).drop("bands_hashes")
 
 # Now we make each band_hash a different column
+band_col_names = []
 for i in range(CONFIG["BandCount"]):
     signature_frame = signature_frame.withColumn(f"band_hash_{i}", signature_frame["band_hashes"][i])
+    band_col_names.append(f"band_hash_{i}")
 signature_frame = signature_frame.drop("band_hashes")
 
-signature_frame.show(truncate=1000)
+# This is the first action we perform on signature frame (show). All previous commands were transformations.
+# They will be executed once we see this show action.
+signature_frame.cache()
+signature_frame.show(truncate=False)
+print(band_col_names)
+
+# Now we divide the df into multiple dfs based on buckets
+# create the empty grand similarity frame
+schema = StructType([
+   StructField("idA", IntegerType(), True),
+   StructField("idB", IntegerType(), True),
+   StructField("JaccardDistance", FloatType(), True)
+])
+
+#Creating an empty DataFrame.
+grand_similarity = spark.createDataFrame([], schema)
+
+
+st = time.time()
+# for each band field:
+for band_col in band_col_names:
+    # get distinct values for the column.
+    dist_vals = signature_frame.select(band_col).distinct().rdd.flatMap(lambda x: x).collect()
+    # print(dist_vals)
+
+    for i, val in enumerate(dist_vals):
+        split = signature_frame.filter(signature_frame[band_col] == val).select("id", "shinglings").cache()
+        # split.show(truncate=False)
+
+        # now for each split we need to make Jaccard comparison
+        # TODO: Keep only id and signature columns at this point
+        # TODO: Initialize and cache the output frame to append on it
+
+        split_similars = model.approxSimilarityJoin(split, split, CONFIG["JaccadDistThreshold"], distCol="JaccardDistance")\
+                 .select(col("datasetA.id").alias("idA"),
+                col("datasetB.id").alias("idB"),
+                col("JaccardDistance"))
+        # eliminate rows matched with itself
+        split_similars = split_similars.filter(split_similars.idA != split_similars.idB)
+        # add each buckets similars into the grand similarity frame
+        # TODO: Check physical plan to see if grand_similarity is already cached.
+        grand_similarity = grand_similarity.union(split_similars)
+
+        # if i == 10:
+            # break
+    # break
+
+grand_similarity.cache()
+grand_similarity.show(truncate=False)
+
+et = time.time()
+elapsed_time = et - st
+print('Execution time banding:', elapsed_time, 'seconds')
+
+
+st = time.time()
+x = model.approxSimilarityJoin(signature_frame, signature_frame, 1.0, distCol="JaccardDistance")\
+    .select(col("datasetA.id").alias("idA"),
+            col("datasetB.id").alias("idB"),
+            col("JaccardDistance"))
+x = x.filter(x.idA != x.idB).cache()
+x.show()
+
+et = time.time()
+elapsed_time = et - st
+print('Execution normal:', elapsed_time, 'seconds')
+
+##### !!!!!! #####
+# With {vector_count = 100, vector_length = 20, band_count = 3}, built-in LSH works so much faster almost 1000 times faster.
+# The problem is, spark caches grand_similarity frame with many more partitions than x.
+# Even after they're created, it it much slower to show grand_similarity rather than x.
+
+
+"""
+
+diff = grand_similarity.exceptAll(x)
+diff.show(truncate=False)
+
+
+
+#similars = model.approxSimilarityJoin(signature_frame, signature_frame, 0.5, distCol="JaccardDistance")
+x.show(truncate=False)
+
+def show_rows(df1, df2, id1, id2):
+    df1.filter(df1.idA == id1).show(truncate=False)
+    df2.filter(df2.idA == id2).show(truncate=False)
+
+show_rows(grand_similarity, x, 0, 0)
+show_rows(grand_similarity, x, 11, 11)
+
+
+grand_similarity.show(truncate=False)
+x.show(truncate=False)
+
+grand_similarity.count()
+x.count()
+
+driver_node = spark.sparkContext.uiWebUrl.split("//")[1].split(":")[0]
+print("Driver Node:", driver_node)
+
+grand_similarity.name()
+
+"""
