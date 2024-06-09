@@ -15,6 +15,9 @@ import numpy as np
 import xxhash
 import time
 
+from functools import reduce  # For Python 3.x
+from pyspark.sql import DataFrame
+
 # TODO: See where you can drop which columns.
 # TODO: We implemented band bucketing but see speed and accuracy with/without band bucketing
 
@@ -41,9 +44,9 @@ CONFIG = {
 conf = SparkConf()
 conf.setAppName("minhash")
 conf.setMaster(f"local[{CONFIG['CoreCount']}]")
-conf.set("spark.driver.memory", "4G")
-conf.set("spark.driver.maxResultSize", "4g")
-conf.set("spark.executor.memory", "4G")
+conf.set("spark.driver.memory", "1G")
+conf.set("spark.driver.maxResultSize", "1g")
+conf.set("spark.executor.memory", "8G")
 sc = pyspark.SparkContext(conf=conf)
 spark = SparkSession.builder.getOrCreate()
 spark
@@ -51,7 +54,7 @@ spark
 # 1. Create random sparse vectors (the shingling matrix).
 # First we need a function to create random sparse vectors
 
-def vector_creator(vector_count = 100, vector_length = 20):
+def vector_creator(vector_count = 5000, vector_length = 20):
     vec_list = []
 
     # at most half of the vector can be full, at least 1 1.:
@@ -174,6 +177,9 @@ signature_frame.cache()
 signature_frame.show(truncate=False)
 print(band_col_names)
 
+st = time.time()
+
+
 # Now we divide the df into multiple dfs based on buckets
 # create the empty grand similarity frame
 schema = StructType([
@@ -182,11 +188,10 @@ schema = StructType([
    StructField("JaccardDistance", FloatType(), True)
 ])
 
+"""
 #Creating an empty DataFrame.
 grand_similarity = spark.createDataFrame([], schema)
 
-
-st = time.time()
 # for each band field:
 for band_col in band_col_names:
     # get distinct values for the column.
@@ -194,8 +199,9 @@ for band_col in band_col_names:
     # print(dist_vals)
 
     for i, val in enumerate(dist_vals):
-        split = signature_frame.filter(signature_frame[band_col] == val).select("id", "shinglings").cache()
+        split = signature_frame.filter(signature_frame[band_col] == val).select("id", "shinglings") #.cache()
         # split.show(truncate=False)
+        print(split.count())
 
         # now for each split we need to make Jaccard comparison
         # TODO: Keep only id and signature columns at this point
@@ -217,6 +223,53 @@ for band_col in band_col_names:
 
 grand_similarity.cache()
 grand_similarity.show(truncate=False)
+"""
+
+
+# Creating an empty list to collect all split_similars DataFrames.
+split_similars_list = []
+
+# for each band field:
+for band_col in band_col_names:
+    # get distinct values for the column.
+    dist_vals = signature_frame.select(band_col).distinct().rdd.flatMap(lambda x: x).collect()
+    # print(dist_vals)
+
+    for i, val in enumerate(dist_vals):
+        split = signature_frame.filter(signature_frame[band_col] == val).select("id", "shinglings") #.cache()
+        # split.show(truncate=False)
+        # print(split.count())
+
+        # now for each split we need to make Jaccard comparison
+        # TODO: Keep only id and signature columns at this point
+        # TODO: Initialize and cache the output frame to append on it
+
+        split_similars = model.approxSimilarityJoin(split, split, CONFIG["JaccadDistThreshold"], distCol="JaccardDistance")\
+                 .select(col("datasetA.id").alias("idA"),
+                col("datasetB.id").alias("idB"),
+                col("JaccardDistance"))
+        # eliminate rows matched with itself
+        split_similars = split_similars.filter(split_similars.idA != split_similars.idB)
+        
+        # add each buckets similars into the list
+        split_similars_list.append(split_similars)
+
+        # if i == 10:
+            # break
+    # break
+
+print(len(split_similars_list))
+
+def my_unionAll(*dfs):
+    return reduce(DataFrame.unionAll, dfs)
+
+# Union all DataFrames in the list at once
+grand_similarity = my_unionAll(*split_similars_list)
+
+grand_similarity.cache()
+grand_similarity.show(truncate=False)
+
+print(len(split_similars_list))
 
 et = time.time()
 elapsed_time = et - st
