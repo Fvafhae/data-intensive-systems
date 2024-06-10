@@ -113,4 +113,4 @@ similarity_matrix.show()
 
 et = time.time()
 elapsed_time = et - st
-print('Execution normal:', elapsed_time, 'seconds')
+print('Execution no banding:', elapsed_time, 'seconds')
