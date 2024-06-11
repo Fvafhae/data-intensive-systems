@@ -14,6 +14,8 @@ from pyspark.sql.functions import udf
 import numpy as np
 import xxhash
 import time
+from graphframes import GraphFrame # Graphframes makes Spark GraphX available in Python.
+
 
 from functools import reduce  # For Python 3.x
 from pyspark.sql import DataFrame
@@ -34,8 +36,8 @@ from pyspark.sql import DataFrame
 CONFIG = {
     "CoreCount": 8,
     "MinHashSignatureSize": 20,
-    "BandCount": 3,
-    "JaccadDistThreshold": 1.0,
+    # "BandCount": 3,
+    "JaccadDistThreshold": 0.2,
     "vector_count": 500,
     "vector_length": 20
 }
@@ -49,8 +51,10 @@ conf.setMaster(f"local[{CONFIG['CoreCount']}]")
 conf.set("spark.driver.memory", "1G")
 conf.set("spark.driver.maxResultSize", "1g")
 conf.set("spark.executor.memory", "8G")
+conf.set("spark.jars.packages", "graphframes:graphframes:0.8.2-spark3.1-s_2.12")
 sc = pyspark.SparkContext(conf=conf)
 spark = SparkSession.builder.getOrCreate()
+spark.sparkContext.setCheckpointDir('spark-warehouse/checkpoints')
 spark
 
 # 1. Create random sparse vectors (the shingling matrix).
@@ -84,7 +88,7 @@ vector_list = vector_creator()
 
 # turn vector list to a dataframe
 df = spark.createDataFrame(vector_list, ["id", "shinglings"])
-df.show(truncate=False)
+# df.show(truncate=False)
 
 # TODO: Do I need to create a key vector?
 # TODO: Maybe we should use approxSimilarityJoin only, not neighbors
@@ -101,16 +105,38 @@ model = mh.fit(df)
 # This caching is good, we use signature_frame twice while approx, no need to calculate it twice.
 # But also, this not the bottle neck, if we need memory, we might choose to remove this matrix from memory by not caching.
 signature_frame = model.transform(df).cache()
+# signature_frame.show(truncate=False)
 
 
 st = time.time()
-similarity_matrix = model.approxSimilarityJoin(signature_frame, signature_frame, 1.0, distCol="JaccardDistance")\
+similarity_matrix = model.approxSimilarityJoin(signature_frame, signature_frame, CONFIG["JaccadDistThreshold"], distCol="JaccardDistance")\
     .select(col("datasetA.id").alias("idA"),
             col("datasetB.id").alias("idB"),
             col("JaccardDistance"))
-similarity_matrix = similarity_matrix.filter(similarity_matrix.idA != similarity_matrix.idB).cache()
-similarity_matrix.show()
+similarity_matrix = similarity_matrix.filter(similarity_matrix.idA != similarity_matrix.idB).selectExpr("idA as src", "idB as dst", "JaccardDistance").cache()
+similarity_matrix.cache()
 
 et = time.time()
 elapsed_time = et - st
 print('Execution no banding:', elapsed_time, 'seconds')
+
+
+# Create similarity groups with graph.
+
+# Create vertices DataFrame
+vertices = similarity_matrix.selectExpr("src as id").distinct()
+
+# Create GraphFrame
+g = GraphFrame(vertices, similarity_matrix)
+
+# Find connected components
+result = g.connectedComponents()
+
+# Get the processes that have no similars
+nonsimilars = signature_frame.selectExpr('id').subtract(result.selectExpr('id'))
+nonsimilars = nonsimilars.withColumn("component", nonsimilars.id)
+
+final_similarity_groups = result.union(nonsimilars).cache()
+final_similarity_groups.show(n=500, truncate=False)
+
+
