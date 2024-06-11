@@ -14,7 +14,7 @@ from pyspark.sql.functions import udf
 import numpy as np
 import xxhash
 import time
-
+from graphframes import GraphFrame # Graphframes makes Spark GraphX available in Python.
 from functools import reduce  # For Python 3.x
 from pyspark.sql import DataFrame
 
@@ -36,7 +36,7 @@ CONFIG = {
     "MinHashSignatureSize": 20,
     "BandCount": 3,
     "JaccadDistThreshold": 1.0,
-    "vector_count": 100,
+    "vector_count": 10,
     "vector_length": 20
 }
 
@@ -46,11 +46,13 @@ CONFIG = {
 conf = SparkConf()
 conf.setAppName("minhash")
 conf.setMaster(f"local[{CONFIG['CoreCount']}]")
-conf.set("spark.driver.memory", "4G")
-conf.set("spark.driver.maxResultSize", "4g")
-conf.set("spark.executor.memory", "4G")
+conf.set("spark.driver.memory", "1G")
+conf.set("spark.driver.maxResultSize", "1g")
+conf.set("spark.executor.memory", "8G")
+conf.set("spark.jars.packages", "graphframes:graphframes:0.8.2-spark3.1-s_2.12")
 sc = pyspark.SparkContext(conf=conf)
 spark = SparkSession.builder.getOrCreate()
+spark.sparkContext.setCheckpointDir('spark-warehouse/checkpoints')
 spark
 
 # 1. Create random sparse vectors (the shingling matrix).
@@ -223,9 +225,27 @@ for band_col in band_col_names:
             # break
     # break
 
+grand_similarity = grand_similarity.selectExpr("idA as src", "idB as dst", "JaccardDistance")
 grand_similarity.cache()
-grand_similarity.show(truncate=False)
 
 et = time.time()
 elapsed_time = et - st
 print('Execution no banding:', elapsed_time, 'seconds')
+
+# Create similarity groups with graph.
+
+# Create vertices DataFrame
+vertices = grand_similarity.selectExpr("src as id").distinct()
+
+# Create GraphFrame
+g = GraphFrame(vertices, grand_similarity)
+
+# Find connected components
+result = g.connectedComponents()
+
+# Get the processes that have no similars
+nonsimilars = signature_frame.selectExpr('id').subtract(result.selectExpr('id'))
+nonsimilars = nonsimilars.withColumn("component", nonsimilars.id)
+
+final_similarity_groups = result.union(nonsimilars).cache()
+final_similarity_groups.show(n=500, truncate=False)
