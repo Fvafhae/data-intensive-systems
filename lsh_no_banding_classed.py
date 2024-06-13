@@ -18,26 +18,13 @@ class MinHashLSHProcessor:
         "vector_length": 20
     }
 
-    def __init__(self):
-        self.spark, self.sc = self._create_spark_session()
+    def __init__(self, spark_session):
+        self.spark = spark_session
         self.vector_list = None
         self.df = None
         self.signature_frame = None
         self.similarity_matrix = None
         self.final_similarity_groups = None
-
-    def _create_spark_session(self):
-        conf = SparkConf()
-        conf.setAppName("minhash")
-        conf.setMaster(f"local[{self.CONFIG['CoreCount']}]")
-        conf.set("spark.driver.memory", "1G")
-        conf.set("spark.driver.maxResultSize", "1g")
-        conf.set("spark.executor.memory", "8G")
-        conf.set("spark.jars.packages", "graphframes:graphframes:0.8.2-spark3.1-s_2.12")
-        sc = SparkContext(conf=conf)
-        spark = SparkSession.builder.getOrCreate()
-        spark.sparkContext.setCheckpointDir('spark-warehouse/checkpoints')
-        return spark, sc
 
     def vector_creator(self, vector_count=None, vector_length=None):
         if vector_count is None:
@@ -100,5 +87,17 @@ class MinHashLSHProcessor:
 
 
 if __name__ == "__main__":
-    processor = MinHashLSHProcessor()
+    conf = SparkConf().setAppName("minhash").setMaster("local[8]")
+    conf.set("spark.driver.memory", "1G")
+    conf.set("spark.driver.maxResultSize", "1g")
+    conf.set("spark.executor.memory", "8G")
+    conf.set("spark.jars.packages", "graphframes:graphframes:0.8.2-spark3.1-s_2.12")
+    sc = SparkContext(conf=conf)
+    spark = SparkSession.builder.getOrCreate()
+    spark.sparkContext.setCheckpointDir('spark-warehouse/checkpoints')
+
+    # Instantiate classes with the shared SparkSession
+    processor = MinHashLSHProcessor(spark)
+
+    # Run the processor
     processor.run()
