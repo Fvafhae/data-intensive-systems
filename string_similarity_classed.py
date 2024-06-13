@@ -70,7 +70,20 @@ class StringSimilarity:
         return jaro
 
     def load_data(self, data):
-        return self.spark.createDataFrame(data, ["Caller", "Target", "Time", "EventType", "PID"])
+
+        # Read CSV file without headers
+        df = self.spark.read.csv("./log.csv", header=False, inferSchema=True)
+
+        # Assign custom column names
+        custom_column_names = ["Caller", "Target", "Time", "EventType", "PID"]
+        df = df.toDF(*custom_column_names)
+
+        columns = df.columns
+
+        # Iterate over each column and remove < and > characters
+        for column in columns:
+            df = df.withColumn(column, f.regexp_replace(df[column], "[<>]", ""))
+        return df
 
     def get_distinct_servers(self, input_data):
         callers = input_data.select("Caller")
@@ -132,21 +145,17 @@ class StringSimilarity:
         input_data.cache()
 
         distinct_servers = self.get_distinct_servers(input_data)
-        distinct_servers.show()
+        # distinct_servers.show()
 
         cross_joined_server_names = self.calculate_similarity(distinct_servers)
-        cross_joined_server_names.show()
+        # cross_joined_server_names.show()
 
         filtered_similarity = self.filter_similarity(cross_joined_server_names)
-        filtered_similarity.show(truncate=100)
+        # filtered_similarity.show(truncate=100)
 
         collapsed_data = self.apply_similarity_assignment(input_data, filtered_similarity)
         collapsed_data.show(truncate=100)
-        collapsed_data.cache()
-
-        print(self.similarity_assignment(filtered_similarity.toPandas()))
-        for x, y in self.similarity_assignment(filtered_similarity.toPandas()).items():
-            print(f"{x}: {y}")
+        # collapsed_data.cache()
 
 if __name__ == "__main__":
     data = [
