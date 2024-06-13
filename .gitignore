@@ -1,3 +1,7 @@
+# spark
+/spark-warehouse
+/spark_env
+
 # Data files
 *.csv 
 *.json

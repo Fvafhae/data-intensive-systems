@@ -9,16 +9,17 @@ class StringSimilarity:
     def __init__(self, core_count=8):
         self.core_count = core_count
         self.spark = self._create_spark_session()
+        self.collapsed_data = None
 
     def _create_spark_session(self):
-        conf = SparkConf()
-        conf.setAppName("string_similarity")
-        conf.setMaster(f"local[{self.core_count}]")
-        conf.set("spark.driver.memory", "2G")
-        conf.set("spark.driver.maxResultSize", "2g")
-        conf.set("spark.executor.memory", "1G")
+        conf = SparkConf().setAppName("minhash").setMaster("local[8]")
+        conf.set("spark.driver.memory", "1G")
+        conf.set("spark.driver.maxResultSize", "1g")
+        conf.set("spark.executor.memory", "8G")
+        conf.set("spark.jars.packages", "graphframes:graphframes:0.8.2-spark3.1-s_2.12")
         sc = SparkContext(conf=conf)
         spark = SparkSession.builder.getOrCreate()
+        spark.sparkContext.setCheckpointDir('spark-warehouse/checkpoints')
         return spark
 
     @staticmethod
@@ -69,10 +70,10 @@ class StringSimilarity:
 
         return jaro
 
-    def load_data(self, data):
+    def load_data(self):
 
         # Read CSV file without headers
-        df = self.spark.read.csv("./log.csv", header=False, inferSchema=True)
+        df = self.spark.read.csv("./output/log.csv", header=False, inferSchema=True)
 
         # Assign custom column names
         custom_column_names = ["Caller", "Target", "Time", "EventType", "PID"]
@@ -105,7 +106,7 @@ class StringSimilarity:
         cross_joined_server_names = cross_joined_server_names.withColumn("Similarity", jaro_udf(cross_joined_server_names.CallerName1, cross_joined_server_names.CallerName2))
         return cross_joined_server_names
 
-    def filter_similarity(self, cross_joined_server_names, threshold=0.7):
+    def filter_similarity(self, cross_joined_server_names, threshold=1.0):
         return cross_joined_server_names.where(cross_joined_server_names.Similarity > threshold)
 
     @staticmethod
@@ -140,8 +141,8 @@ class StringSimilarity:
         collapsed_data = input_data.na.replace(self.similarity_assignment(cross_joined_server_names.toPandas()))
         return collapsed_data
 
-    def run(self, data):
-        input_data = self.load_data(data)
+    def run(self):
+        input_data = self.load_data()
         input_data.cache()
 
         distinct_servers = self.get_distinct_servers(input_data)
@@ -153,29 +154,11 @@ class StringSimilarity:
         filtered_similarity = self.filter_similarity(cross_joined_server_names)
         # filtered_similarity.show(truncate=100)
 
-        collapsed_data = self.apply_similarity_assignment(input_data, filtered_similarity)
-        collapsed_data.show(truncate=100)
+        self.collapsed_data = self.apply_similarity_assignment(input_data, filtered_similarity)
+        self.collapsed_data.show(truncate=100)
         # collapsed_data.cache()
 
 if __name__ == "__main__":
-    data = [
-        (None, "MainServer1", 0, "Request", 0),
-        ("MainServer1", "Authentication1", 1, "Request", 0),
-        ("Authentication1", "MainServer1", 2, "Response", 0),
-        (None, "MainServer1", 0, "Request", 1),
-        ("MainServer1", "CreditCardMasterCard1", 3, "Request", 0),
-        ("MainServer1", "Authentication2", 3, "Request", 1),
-        ("Authentication2", "MainServer1", 7, "Response", 0),
-        ("CreditCardMasterCard1", "MainServer1", 8, "Response", 0),
-        ("MainServer1", "CreditCardVisa1", 8, "Request", 0),
-        ("CreditCardVisa1", "MainServer1", 10, "Response", 0),
-        ("MainServer1", "CreditCardVisa2", 11, "Request", 0),
-        ("CreditCardVisa2", "MainServer1", 12, "Response", 0),
-        ("MainServer2", "CreditCardMasterCard2", 20, "Request", 0),
-        ("CreditCardMasterCard2", "MainServer2", 22, "Response", 0),
-        ("TravelCardVisa1", "MainServer2", 22, "Request", 0),
-        ("MainServer2", "TravelCardVisa1", 22, "Response", 0)
-    ]
 
     string_similarity = StringSimilarity()
-    string_similarity.run(data)
+    string_similarity.run()
