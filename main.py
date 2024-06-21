@@ -4,7 +4,9 @@ import time
 import string_similarity_classed as s
 from shingling import Shingler
 from lsh_no_banding_classed import MinHashLSHProcessor
+from calculate_accuracy import CalculateAccuracy
 
+"""
 def main():
     # Data generation
     st = time.time()
@@ -24,9 +26,17 @@ def main():
 
     minhasher = MinHashLSHProcessor(spark_session=string_sim.spark, sparse_vector_df=shing.sparse_vectors_df)
     minhasher.run()
+    minhasher.final_similarity_groups.toPandas().to_csv('final_similarity_groups.csv')
 
+    acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
+    acc_calculator.calculate_accuracy(match_df = minhasher.final_similarity_groups)
 
+"""
 
+def main():
+    string_sim = s.StringSimilarity()
+    acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
+    acc_calculator.calculate_accuracy()
 
 
 if __name__ == "__main__":
