@@ -6,7 +6,7 @@ from shingling import Shingler
 from lsh_no_banding_classed import MinHashLSHProcessor
 from calculate_accuracy import CalculateAccuracy
 
-"""
+
 def main():
     # Data generation
     st = time.time()
@@ -31,13 +31,13 @@ def main():
     acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
     acc_calculator.calculate_accuracy(match_df = minhasher.final_similarity_groups)
 
-"""
 
+"""
 def main():
     string_sim = s.StringSimilarity()
     acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
     acc_calculator.calculate_accuracy()
 
-
+"""
 if __name__ == "__main__":
     main()

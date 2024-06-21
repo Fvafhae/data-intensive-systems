@@ -12,8 +12,8 @@ class CalculateAccuracy:
 
         # Read CSV file without headers
         stats = self.spark.read.csv("./output/stats.csv", header=True, inferSchema=True).selectExpr("process_id as id", "pattern_id")
-        stats.show()
-        match_df = self.spark.read.csv("final_similarity_groups.csv", header=True, inferSchema=True)
+
+        # match_df = self.spark.read.csv("final_similarity_groups.csv", header=True, inferSchema=True)
 
         match_df.show()
 
@@ -29,8 +29,11 @@ class CalculateAccuracy:
 
         # Group by component and pattern_id, and count occurrences
         grouped_df = joined_df.groupBy("component", "pattern_id").agg(count("*").alias("count"))
+        print("grouped df")
+        grouped_df.show()
 
         # Find the most frequent component-pattern_id pairs
+        # We assume that we predicted more than 50% of the processes for each pattern_id
         window = Window.partitionBy("component").orderBy(col("count").desc())
 
         mapping_df = grouped_df.withColumn("rank", row_number().over(window)) \
@@ -57,6 +60,8 @@ class CalculateAccuracy:
 
         print(f"Number of matching pattern_ids: {match_count}")
         print(f"Number of non-matching pattern_ids: {mismatch_count}")
+        self.accuracy = match_count / (match_count + mismatch_count)
+        print(self.accuracy)
 
 
 
