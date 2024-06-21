@@ -44,7 +44,7 @@ class MinHashLSHProcessor:
                     col("JaccardDistance"))
         self.similarity_matrix = self.similarity_matrix.filter(self.similarity_matrix.idA != self.similarity_matrix.idB)\
             .selectExpr("idA as src", "idB as dst", "JaccardDistance").cache()
-        # self.similarity_matrix.show(n=1000, truncate=False)
+        self.similarity_matrix.show(n=1000, truncate=False)
         et = time.time()
         elapsed_time = et - st
         print('Execution no banding:', elapsed_time, 'seconds')
