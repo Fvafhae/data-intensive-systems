@@ -106,7 +106,7 @@ class StringSimilarity:
         cross_joined_server_names = cross_joined_server_names.withColumn("Similarity", jaro_udf(cross_joined_server_names.CallerName1, cross_joined_server_names.CallerName2))
         return cross_joined_server_names
 
-    def filter_similarity(self, cross_joined_server_names, threshold=0.5):
+    def filter_similarity(self, cross_joined_server_names, threshold=0.3):
         return cross_joined_server_names.where(cross_joined_server_names.Similarity > threshold)
 
     @staticmethod
