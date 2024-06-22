@@ -12,10 +12,8 @@ from graphframes import GraphFrame
 class MinHashLSHProcessor:
     CONFIG = {
         "CoreCount": 8,
-        "MinHashSignatureSize": 20,
-        "JaccardDistThreshold": 1.0,
-        "vector_count": 500,
-        "vector_length": 20
+        "MinHashSignatureSize": 100,
+        "JaccardDistThreshold": 0.3
     }
 
     def __init__(self, spark_session, sparse_vector_df):

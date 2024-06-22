@@ -57,7 +57,7 @@ class CalculateAccuracy:
         # Compare the component predictions with the pattern_id
         final_comparison_df = final_comparison_df.withColumn("pattern_id_match", col("pattern_id_predicted") == col("pattern_id"))
         final_comparison_df = final_comparison_df.withColumn("pattern_id_match", when(col("pattern_id_match").isNull(), False).otherwise(col("pattern_id_match"))).orderBy(col("pattern_id"))
-        final_comparison_df.show()
+        final_comparison_df.show(n=1000)
 
         # Show the results
         final_comparison_df.select("id", "pattern_id_predicted", "pattern_id", "pattern_id_match")

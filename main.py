@@ -38,6 +38,11 @@ def main():
     solution_time = time.time() - st_solution
     final_acc = acc_calculator.accuracy
 
+    jaro_th = string_sim.jaro_th
+    jaccard_th = minhasher.CONFIG["JaccardDistThreshold"]
+
+    minhash_signature_size = minhasher.CONFIG["MinHashSignatureSize"]
+
     if test:
         with open("config.yaml", 'r') as file:
             CONFIG = g.yaml.safe_load(file)
@@ -47,13 +52,9 @@ def main():
             number_of_gold_patterns = CONFIG["PROCESS_PATTERN_NUMBER"]
             number_of_processes = CONFIG["PROCESSES_TO_GENERATE"]
 
-        result_st = f"process_max_depth: {process_max_depth}, process_max_length: {process_max_length}, number_of_gold_patterns: {number_of_gold_patterns}, number_of_processes: {number_of_processes}, solution_time: {solution_time}, accuracy: {final_acc}"
-        with open("./output/test_results", "a") as file:
+        result_st = f"process_max_depth: {process_max_depth}, process_max_length: {process_max_length}, number_of_gold_patterns: {number_of_gold_patterns}, number_of_processes: {number_of_processes}, solution_time: {solution_time}, accuracy: {final_acc}, jaro_th: {jaro_th}, jaccard_th: {jaccard_th}, minhash_signature_size: {minhash_signature_size}"
+        with open("./output/test_results.txt", "a") as file:
             file.write(result_st)
-
-
-
-
 
 
 """
