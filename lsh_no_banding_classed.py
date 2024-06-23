@@ -12,17 +12,17 @@ from graphframes import GraphFrame
 class MinHashLSHProcessor:
     CONFIG = {
         "CoreCount": 8,
-        "MinHashSignatureSize": 100,
-        "JaccardDistThreshold": 0.3
+        "MinHashSignatureSize": 100
     }
 
-    def __init__(self, spark_session, sparse_vector_df):
+    def __init__(self, spark_session, sparse_vector_df, jaccard_th):
         self.spark = spark_session
         self.vector_list = None
         self.df = sparse_vector_df
         self.signature_frame = None
         self.similarity_matrix = None
         self.final_similarity_groups = None
+        self.jaccard_th = jaccard_th
 
     
     def create_signatures(self):
@@ -36,7 +36,7 @@ class MinHashLSHProcessor:
         # print("hey")
         # self.signature_frame.select("PID").show(truncate=False)
         model = mh.fit(self.df)
-        self.similarity_matrix = model.approxSimilarityJoin(self.signature_frame, self.signature_frame, self.CONFIG["JaccardDistThreshold"], distCol="JaccardDistance")\
+        self.similarity_matrix = model.approxSimilarityJoin(self.signature_frame, self.signature_frame, self.jaccard_th, distCol="JaccardDistance")\
             .select(col("datasetA.PID").alias("idA"),
                     col("datasetB.PID").alias("idB"),
                     col("JaccardDistance"))

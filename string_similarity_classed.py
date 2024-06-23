@@ -6,11 +6,11 @@ import math as m
 from pyspark.sql.types import FloatType
 
 class StringSimilarity:
-    def __init__(self, core_count=8):
+    def __init__(self, core_count=8, jaro_th=0.1):
         self.core_count = core_count
         self.spark = self._create_spark_session()
         self.collapsed_data = None
-        self.jaro_th = 0.3
+        self.jaro_th = jaro_th
 
     def _create_spark_session(self):
         conf = SparkConf().setAppName("minhash").setMaster("local[8]")
