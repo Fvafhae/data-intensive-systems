@@ -39,30 +39,28 @@ def tester(file_path):
                 jaccard_th = jaccard_loop * 0.1
                 st_solution = time.time()
 
-                try:
+                # string similarity is used
+                string_sim = s.StringSimilarity(jaro_th=jaro_th)
+                string_sim.run()
+                string_sim.collapsed_data.show(truncate=False)
 
-                    # string similarity is used
-                    string_sim = s.StringSimilarity(jaro_th=jaro_th)
-                    string_sim.run()
-                    string_sim.collapsed_data.show(truncate=False)
+                shing = Shingler(spark_session = string_sim.spark, df = string_sim.collapsed_data)
+                shing.run()
 
-                    shing = Shingler(spark_session = string_sim.spark, df = string_sim.collapsed_data)
-                    shing.run()
+                minhasher = MinHashLSHProcessor(spark_session=string_sim.spark, sparse_vector_df=shing.sparse_vectors_df, jaccard_th=jaccard_th)
+                minhasher.run()
+                minhasher.final_similarity_groups.toPandas().to_csv('final_similarity_groups.csv')
 
-                    minhasher = MinHashLSHProcessor(spark_session=string_sim.spark, sparse_vector_df=shing.sparse_vectors_df, jaccard_th=jaccard_th)
-                    minhasher.run()
-                    minhasher.final_similarity_groups.toPandas().to_csv('final_similarity_groups.csv')
+                acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
+                acc_calculator.calculate_accuracy(match_df = minhasher.final_similarity_groups)
 
-                    acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
-                    acc_calculator.calculate_accuracy(match_df = minhasher.final_similarity_groups)
+                solution_time = time.time() - st_solution
+                final_acc = acc_calculator.accuracy
 
-                    solution_time = time.time() - st_solution
-                    final_acc = acc_calculator.accuracy
+                minhash_signature_size = minhasher.CONFIG["MinHashSignatureSize"]
 
-                    minhash_signature_size = minhasher.CONFIG["MinHashSignatureSize"]
-
-                    result = {
-                        "id": str(test_case_count) + str(jaro_loop) + str(jaccard_loop),
+                result = {
+                        "id": str(i) + str(jaro_loop) + str(jaccard_loop),
                         "process_max_depth": process_max_depth,
                         "process_max_length": process_max_length,
                         "number_of_gold_patterns": number_of_gold_patterns,
@@ -72,26 +70,26 @@ def tester(file_path):
                         "jaro_th": jaro_th,
                         "jaccard_th": jaccard_th,
                         "minhash_signature_size": minhash_signature_size
-                    }
+                }
                     
-                    # Function to read existing data from the JSON file
-                    def read_json_file(file_path):
-                        if os.path.exists(file_path):
-                            with open(file_path, 'r') as json_file:
-                                return json.load(json_file)
-                        else:
-                            return {}
+                # Function to read existing data from the JSON file
+                def read_json_file(file_path):
+                    if os.path.exists(file_path):
+                        with open(file_path, 'r') as json_file:
+                            return json.load(json_file)
+                    else:
+                        return {}
                         
-                    existing_data = read_json_file(file_path)
+                existing_data = read_json_file(file_path)
 
-                    with open(file_path, 'w') as file:
+                with open(file_path, 'w') as file:
 
-                        existing_data[str(i) + str(jaro_loop) + str(jaccard_loop)] = result
+                    existing_data[str(i) + str(jaro_loop) + str(jaccard_loop)] = result
                        
-                        # file_data[str(test_case_count) + str(jaro_loop) + str(jaccard_loop)] = result
-                        # convert back to json.
-                        json.dump(existing_data, file, indent=4)
-                except:
-                    print("got err!!!")
+                    # file_data[str(test_case_count) + str(jaro_loop) + str(jaccard_loop)] = result
+                    # convert back to json.
+                    json.dump(existing_data, file, indent=4)
+                        
+                string_sim.spark.stop()
 
-tester(file_path = "/output/test_results.json")
+tester(file_path = "./output/test_results.json")
