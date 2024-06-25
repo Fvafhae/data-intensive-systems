@@ -15,7 +15,7 @@ import os
     # parameters to be set: jaro_th, jaccard_th, length of the signature matrix.
 
 def tester(file_path):
-    test_case_count = 2
+    test_case_count = 3
     for i in range(0, test_case_count):
         
         # Data generation once for each case

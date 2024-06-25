@@ -156,7 +156,7 @@ class StringSimilarity:
         # filtered_similarity.show(truncate=100)
 
         self.collapsed_data = self.apply_similarity_assignment(input_data, filtered_similarity)
-        self.collapsed_data.show(truncate=100)
+        # self.collapsed_data.show(truncate=100)
         # collapsed_data.cache()
 
 if __name__ == "__main__":
