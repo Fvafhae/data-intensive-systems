@@ -164,6 +164,21 @@ class Generator():
             )
             self.patterns.append(process)
 
+        unique_patterns = set()
+        patterns = list()
+        id = 0
+        for pattern in self.patterns:
+            unique_patterns_length = len(unique_patterns)
+            order = [x.target for x in pattern if x.type == 'Request']
+            unique_patterns.add(str(order))
+            if len(unique_patterns) != unique_patterns_length:
+                for event in pattern:
+                    event.id = id
+                id += 1
+                patterns.append(pattern)
+
+        self.patterns = patterns 
+
         if save:
             file_path = "./output/patterns.csv"
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -173,7 +188,6 @@ class Generator():
                         f.write(
                             f"<{event.source},{event.target},{event.time},{event.type},{event.id}>\n"
                         )
-
 
     def populate_processes(self, process_number=None, save=True):
         
