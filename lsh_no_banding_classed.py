@@ -31,7 +31,7 @@ class MinHashLSHProcessor:
         self.signature_frame = model.transform(self.df).cache()
 
     def compute_similarity(self):
-        st = time.time()
+        #st = time.time()
         mh = MinHashLSH(inputCol="sparse_vectors", outputCol="signatures", numHashTables=self.CONFIG["MinHashSignatureSize"], seed=0)
         
         model = mh.fit(self.df)
@@ -45,8 +45,8 @@ class MinHashLSHProcessor:
             .selectExpr("idA as src", "idB as dst", "JaccardDistance").cache()
             
         et = time.time()
-        elapsed_time = et - st
-        print('Execution no banding:', elapsed_time, 'seconds')
+        #elapsed_time = et - st
+        #print('Execution no banding:', elapsed_time, 'seconds')
 
     def create_similarity_groups(self):
         vertices = self.similarity_matrix.selectExpr("src as id").distinct()

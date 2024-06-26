@@ -3,6 +3,7 @@ import hashlib
 from pyspark.sql.functions import col, array, collect_list, udf, sort_array
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, LongType, ArrayType
 from pyspark.ml.linalg import Vectors, VectorUDT, SparseVector
+from collections import defaultdict
 
 # os.environ['JAVA_HOME'] = r"C:\Program Files\Java\jdk-22"
 # os.environ['PYSPARK_PYTHON'] = r"C:\Users\milot\AppData\Local\Programs\Python\Python311\python.exe"
@@ -11,6 +12,7 @@ class Shingler:
     def __init__(self, spark_session, df):
         self.spark = spark_session
         self.df = df
+        self.bucket_count = 10**8
 
     def process_data(self):
         grouped_df = self.df.filter(col("EventType") == "Request") \
@@ -37,8 +39,18 @@ class Shingler:
         # dense_vectors_df.show(truncate=False)
 
         def dense_to_sparse(dense_vector):
+            indices = sorted(set(dense_vector))
+            values = [1] * len(indices)
+            sparse_vector = SparseVector(10**8, indices, values)
+            return sparse_vector
+        
+        """
+        def dense_to_sparse(dense_vector):
+            print(dense_vector)
             sparse_vector = SparseVector(10**8, dense_vector, [1] * len(dense_vector))
             return sparse_vector
+        """
+        
 
         dense_to_sparse_udf = udf(dense_to_sparse, VectorUDT())
         self.sparse_vectors_df = dense_vectors_df.withColumn("sparse_vectors", dense_to_sparse_udf(col("dense_vectors")))

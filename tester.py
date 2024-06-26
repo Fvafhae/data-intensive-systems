@@ -15,7 +15,7 @@ import os
     # parameters to be set: jaro_th, jaccard_th, length of the signature matrix.
 
 def tester(file_path):
-    test_case_count = 3
+    test_case_count = 20
     for i in range(0, test_case_count):
         
         # Data generation once for each case
@@ -33,9 +33,9 @@ def tester(file_path):
             number_of_gold_patterns = CONFIG["PROCESS_PATTERN_NUMBER"]
             number_of_processes = CONFIG["PROCESSES_TO_GENERATE"]
 
-        for jaro_loop in range(1, 7):
+        for jaro_loop in range(1, 11):
             jaro_th = jaro_loop * 0.1
-            for jaccard_loop in range(1, 6):
+            for jaccard_loop in range(1, 11):
                 jaccard_th = jaccard_loop * 0.1
                 st_solution = time.time()
 
