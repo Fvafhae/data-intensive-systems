@@ -26,7 +26,7 @@ def main():
     st_solution = time.time()
 
     # string similarity is used
-    string_sim = s.StringSimilarity(jaro_th=0.5)
+    string_sim = s.StringSimilarity(jaro_th=0.3)
     string_sim.run()
     string_sim.collapsed_data.show(truncate=False)
 
@@ -42,6 +42,8 @@ def main():
 
     solution_time = time.time() - st_solution
     final_acc = acc_calculator.accuracy
+
+    print(solution_time)
 
 """
 def main():

@@ -33,9 +33,9 @@ def tester(file_path):
             number_of_gold_patterns = CONFIG["PROCESS_PATTERN_NUMBER"]
             number_of_processes = CONFIG["PROCESSES_TO_GENERATE"]
 
-        for jaro_loop in range(1, 11):
+        for jaro_loop in range(1, 7):
             jaro_th = jaro_loop * 0.1
-            for jaccard_loop in range(1, 11):
+            for jaccard_loop in range(1, 6):
                 jaccard_th = jaccard_loop * 0.1
                 st_solution = time.time()
 
