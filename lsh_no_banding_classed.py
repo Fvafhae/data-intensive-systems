@@ -12,19 +12,17 @@ from graphframes import GraphFrame
 class MinHashLSHProcessor:
     CONFIG = {
         "CoreCount": 8,
-        "MinHashSignatureSize": 20,
-        "JaccardDistThreshold": 1.0,
-        "vector_count": 500,
-        "vector_length": 20
+        "MinHashSignatureSize": 100
     }
 
-    def __init__(self, spark_session, sparse_vector_df):
+    def __init__(self, spark_session, sparse_vector_df, jaccard_th):
         self.spark = spark_session
         self.vector_list = None
         self.df = sparse_vector_df
         self.signature_frame = None
         self.similarity_matrix = None
         self.final_similarity_groups = None
+        self.jaccard_th = jaccard_th
 
     
     def create_signatures(self):
@@ -35,16 +33,17 @@ class MinHashLSHProcessor:
     def compute_similarity(self):
         st = time.time()
         mh = MinHashLSH(inputCol="sparse_vectors", outputCol="signatures", numHashTables=self.CONFIG["MinHashSignatureSize"], seed=0)
-        # print("hey")
-        # self.signature_frame.select("PID").show(truncate=False)
+        
         model = mh.fit(self.df)
-        self.similarity_matrix = model.approxSimilarityJoin(self.signature_frame, self.signature_frame, self.CONFIG["JaccardDistThreshold"], distCol="JaccardDistance")\
+        self.similarity_matrix = model.approxSimilarityJoin(self.signature_frame, self.signature_frame, self.jaccard_th, distCol="JaccardDistance")\
             .select(col("datasetA.PID").alias("idA"),
                     col("datasetB.PID").alias("idB"),
                     col("JaccardDistance"))
+        
+        self.signature_frame.unpersist()
         self.similarity_matrix = self.similarity_matrix.filter(self.similarity_matrix.idA != self.similarity_matrix.idB)\
             .selectExpr("idA as src", "idB as dst", "JaccardDistance").cache()
-        # self.similarity_matrix.show(n=1000, truncate=False)
+            
         et = time.time()
         elapsed_time = et - st
         print('Execution no banding:', elapsed_time, 'seconds')
@@ -52,6 +51,7 @@ class MinHashLSHProcessor:
     def create_similarity_groups(self):
         vertices = self.similarity_matrix.selectExpr("src as id").distinct()
         g = GraphFrame(vertices, self.similarity_matrix)
+        self.similarity_matrix.unpersist()
         result = g.connectedComponents()
         nonsimilars = self.signature_frame.selectExpr('PID').subtract(result.selectExpr('id'))
         nonsimilars = nonsimilars.withColumn("component", nonsimilars.PID)

@@ -6,10 +6,11 @@ import math as m
 from pyspark.sql.types import FloatType
 
 class StringSimilarity:
-    def __init__(self, core_count=8):
+    def __init__(self, core_count=8, jaro_th=0.1):
         self.core_count = core_count
         self.spark = self._create_spark_session()
         self.collapsed_data = None
+        self.jaro_th = jaro_th
 
     def _create_spark_session(self):
         conf = SparkConf().setAppName("minhash").setMaster("local[8]")
@@ -106,8 +107,8 @@ class StringSimilarity:
         cross_joined_server_names = cross_joined_server_names.withColumn("Similarity", jaro_udf(cross_joined_server_names.CallerName1, cross_joined_server_names.CallerName2))
         return cross_joined_server_names
 
-    def filter_similarity(self, cross_joined_server_names, threshold=1.0):
-        return cross_joined_server_names.where(cross_joined_server_names.Similarity > threshold)
+    def filter_similarity(self, cross_joined_server_names):
+        return cross_joined_server_names.where(cross_joined_server_names.Similarity > self.jaro_th)
 
     @staticmethod
     def similarity_assignment(df):
@@ -155,7 +156,7 @@ class StringSimilarity:
         # filtered_similarity.show(truncate=100)
 
         self.collapsed_data = self.apply_similarity_assignment(input_data, filtered_similarity)
-        self.collapsed_data.show(truncate=100)
+        # self.collapsed_data.show(truncate=100)
         # collapsed_data.cache()
 
 if __name__ == "__main__":
