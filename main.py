@@ -28,7 +28,7 @@ def main():
     # string similarity is used
     string_sim = s.StringSimilarity(jaro_or_edit="jaro", edit_th=5, jaro_th=0.8)
     string_sim.run()
-    string_sim.collapsed_data.show(truncate=False)
+    # string_sim.collapsed_data.show(truncate=False)
 
     shing = Shingler(spark_session = string_sim.spark, df = string_sim.collapsed_data)
     shing.run()

@@ -4,6 +4,7 @@ from pyspark.sql import *
 import pyspark.sql.functions as f
 import math as m
 from pyspark.sql.types import FloatType
+from collections import defaultdict
 
 class StringSimilarity:
     def __init__(self, core_count=8, jaro_th=0.1, edit_th=10, jaro_or_edit="jaro"):
@@ -29,9 +30,8 @@ class StringSimilarity:
 
     @staticmethod
     def jaro_winkler_similarity(s1, s2, winkler_factor=0.1, matching_prefix_length=20):
-       
         if s1 == s2:
-            jaro = 1.0
+            return 1.0
         
         s1_len = len(s1)
         s2_len = len(s2)
@@ -47,21 +47,27 @@ class StringSimilarity:
 
         for i in range(s1_len):
             for j in range(max(0, i - match_th), min(i + match_th + 1, s2_len)):
-                if s1[i] == s2[j]:
+                if s1[i] == s2[j] and not s2_matches[j]:
                     match_count += 1
                     s1_matches[i] = 1
                     s2_matches[j] = 1
-
-                    if i != j and not (i == s1_len - 1 and j == s2_len - 1):
-                        trans_count += 1
                     break
 
         if match_count == 0:
-            return float(match_count)
+            return 0.0
 
-        trans_count = m.floor(trans_count / 2)
+        k = 0
+        for i in range(s1_len):
+            if s1_matches[i]:
+                while not s2_matches[k]:
+                    k += 1
+                if s1[i] != s2[k]:
+                    trans_count += 1
+                k += 1
 
-        jaro = (1/3) * ((match_count / s1_len) + (match_count / s2_len) + ((match_count - trans_count) / match_count))
+        trans_count /= 2
+
+        jaro = (match_count / s1_len + match_count / s2_len + (match_count - trans_count) / match_count) / 3
 
         for i in range(min(s1_len, s2_len)):
             if s1[i] == s2[i]:
@@ -69,18 +75,12 @@ class StringSimilarity:
             else:
                 break
 
-        if matching_prefix_size > matching_prefix_length:
-            matching_prefix_size = matching_prefix_length
+        matching_prefix_size = min(matching_prefix_size, matching_prefix_length)
 
-        jaro_winkler = jaro + (winkler_factor * matching_prefix_size * (1 - jaro))
-
-        
-        return jaro
-        
+        return jaro + (winkler_factor * matching_prefix_size * (1 - jaro))
 
     @staticmethod
     def edit_dist(s1, s2):
-        # print("edit_working")
         m = len(s1)
         n = len(s2)
     
@@ -97,19 +97,13 @@ class StringSimilarity:
         for i in range(1, m + 1):
             for j in range(1, n + 1):
                 if s1[i - 1] == s2[j - 1]:
-                    # Characters match, no operation needed
                     dp[i][j] = dp[i - 1][j - 1]
                 else:
-                    # Characters don't match, choose minimum cost among insertion, deletion, or substitution
                     dp[i][j] = 1 + min(dp[i][j - 1], dp[i - 1][j], dp[i - 1][j - 1])
     
-        edit_dist = dp[m][n]
-        # print(edit_dist)
-        return edit_dist
-
+        return dp[m][n]
 
     def load_data(self):
-
         # Read CSV file without headers
         df = self.spark.read.csv("./output/log.csv", header=False, inferSchema=True)
 
@@ -146,6 +140,7 @@ class StringSimilarity:
             cross_joined_server_names = cross_joined_server_names.withColumn("Similarity", jaro_udf(cross_joined_server_names.CallerName1, cross_joined_server_names.CallerName2))
         else:
             cross_joined_server_names = cross_joined_server_names.withColumn("Similarity", edit_udf(cross_joined_server_names.CallerName1, cross_joined_server_names.CallerName2))
+        # cross_joined_server_names.show(truncate=False, n=1000)
         return cross_joined_server_names
 
     def filter_similarity(self, cross_joined_server_names):
@@ -156,37 +151,52 @@ class StringSimilarity:
 
     @staticmethod
     def similarity_assignment(df):
-        set_dict = {}
-        handled = set()
-        out_dict = {}
+        class UnionFind:
+            def __init__(self):
+                self.parent = {}
 
-        i = 0
-        for row in df.iterrows():
-            if i == 0:
-                set_dict[row[1]["CallerName1"]] = set([row[1]["CallerName2"]])
-                handled.add(row[1]["CallerName1"])
-                handled.add(row[1]["CallerName2"])
-                i = 1
-            else:
-                if row[1]["CallerName1"] in set_dict.keys() and row[1]["CallerName2"] not in set_dict[row[1]["CallerName1"]]:
-                    set_dict[row[1]["CallerName1"]].add(row[1]["CallerName2"])
-                    handled.add(row[1]["CallerName2"])
-                elif row[1]["CallerName1"] not in set_dict.keys() and row[1]["CallerName1"] not in handled and row[1]["CallerName2"] not in handled:
-                    set_dict[row[1]["CallerName1"]] = set([row[1]["CallerName2"]])
-                    handled.add(row[1]["CallerName1"])
-                    handled.add(row[1]["CallerName2"])
+            def find(self, x):
+                if self.parent[x] != x:
+                    self.parent[x] = self.find(self.parent[x])
+                return self.parent[x]
 
-        for key in set_dict.keys():
-            for value in set_dict[key]:
-                out_dict[value] = key
+            def union(self, x, y):
+                rootX = self.find(x)
+                rootY = self.find(y)
+                if rootX != rootY:
+                    self.parent[rootY] = rootX
+
+            def add(self, x):
+                if x not in self.parent:
+                    self.parent[x] = x
+
+        uf = UnionFind()
+
+        for _, row in df.iterrows():
+            server1 = row["CallerName1"]
+            server2 = row["CallerName2"]
         
-        print("Similar servers: \n")
-        print(out_dict)
+            uf.add(server1)
+            uf.add(server2)
+            uf.union(server1, server2)
+    
+        groups = defaultdict(set)
+        for server in uf.parent:
+            root = uf.find(server)
+            groups[root].add(server)
+    
+        out_dict = {}
+        for root, servers in groups.items():
+            for server in servers:
+                out_dict[server] = root
+    
+        # print("Similar servers: \n")
+        # print(out_dict)
         return out_dict
 
     def apply_similarity_assignment(self, input_data, cross_joined_server_names):
         collapsed_data = input_data.na.replace(self.similarity_assignment(cross_joined_server_names.toPandas()))
-        collapsed_data.show(truncate=False, n=1000)
+        # collapsed_data.show(truncate=False, n=1000)
         return collapsed_data
 
     def run(self):
@@ -194,19 +204,13 @@ class StringSimilarity:
         input_data.cache()
 
         distinct_servers = self.get_distinct_servers(input_data)
-        # distinct_servers.show()
 
         cross_joined_server_names = self.calculate_similarity(distinct_servers)
-        # cross_joined_server_names.show()
 
         filtered_similarity = self.filter_similarity(cross_joined_server_names)
-        # filtered_similarity.show(truncate=100)
 
         self.collapsed_data = self.apply_similarity_assignment(input_data, filtered_similarity)
-        # self.collapsed_data.show(truncate=100)
-        # collapsed_data.cache()
 
 if __name__ == "__main__":
-
     string_similarity = StringSimilarity()
     string_similarity.run()
