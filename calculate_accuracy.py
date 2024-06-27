@@ -17,7 +17,8 @@ class CalculateAccuracy:
         # Join match_df with stats on id
         joined_df = match_df.join(stats, match_df.id == stats.id).drop(stats.id)
         joined_df_to_work_on = joined_df
-        joined_df.show(truncate=False, n=1000)
+        joined_df.cache().count()
+        # joined_df.show(truncate=False, n=1000)
 
         # Initialize an empty DataFrame to store the mappings
         mappings = []
@@ -39,26 +40,27 @@ class CalculateAccuracy:
 
                     # Remove matched component-pattern_id pairs from joined_df
                     joined_df_to_work_on = joined_df_to_work_on.filter(~((joined_df_to_work_on.component == best_component) | (joined_df_to_work_on.pattern_id == curr_pattern_id)))
-                    joined_df_to_work_on.show(truncate=False, n=1000)
+                    #joined_df_to_work_on.show(truncate=False, n=1000)
 
         # Convert mappings to a DataFrame
         schema = ["component", "pattern_id"]
         mapping_df = self.spark.createDataFrame(mappings, schema).selectExpr("component", "pattern_id as mapping_pattern_id")
-        print("mapping_df:")
-        mapping_df.show()
-        print("joined_df:")
-        joined_df.show(truncate=False, n=1000)
+        #print("mapping_df:")
+        #mapping_df.show()
+        #print("joined_df:")
+        #joined_df.show(truncate=False, n=1000)
 
         # Join the original DataFrame with the inferred mapping
         final_comparison_df = joined_df.join(mapping_df, "component", "left_outer")
-        final_comparison_df.show(truncate=False, n=1000)
+        final_comparison_df.cache().count()
+        #final_comparison_df.show(truncate=False, n=1000)
 
         # Compare the component predictions with the actual pattern_id
         final_comparison_df = final_comparison_df.withColumn("best_pattern_id_match", col("pattern_id") == col("mapping_pattern_id"))
-        final_comparison_df.show(truncate=False, n=1000)
+        #final_comparison_df.show(truncate=False, n=1000)
 
         # Show the results
-        final_comparison_df.select("id", "pattern_id", "best_pattern_id_match").show(truncate=False)
+        # final_comparison_df.select("id", "pattern_id", "best_pattern_id_match").show(truncate=False)
 
         # Optionally, count the number of matching and non-matching records
         match_count = final_comparison_df.filter(col("best_pattern_id_match")).count()

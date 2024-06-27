@@ -15,7 +15,7 @@ import os
     # parameters to be set: jaro_th, jaccard_th, length of the signature matrix.
 
 def tester(file_path):
-    test_case_count = 20
+    test_case_count = 3
     for i in range(0, test_case_count):
         
         # Data generation once for each case
@@ -33,9 +33,11 @@ def tester(file_path):
             number_of_gold_patterns = CONFIG["PROCESS_PATTERN_NUMBER"]
             number_of_processes = CONFIG["PROCESSES_TO_GENERATE"]
 
-        for jaro_loop in range(1, 11):
+        # investigate jaro threshold 0.5 - 1.0
+        for jaro_loop in range(5, 11):
             jaro_th = jaro_loop * 0.1
-            for jaccard_loop in range(1, 11):
+            # investigate jaccard dist 0.1 - 0.6
+            for jaccard_loop in range(1, 6):
                 jaccard_th = jaccard_loop * 0.1
                 st_solution = time.time()
 
@@ -52,7 +54,7 @@ def tester(file_path):
                 minhasher.final_similarity_groups.toPandas().to_csv('final_similarity_groups.csv')
 
                 solution_time = time.time() - st_solution
-                
+
                 acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
                 acc_calculator.calculate_accuracy(match_df = minhasher.final_similarity_groups)
 

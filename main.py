@@ -17,10 +17,10 @@ def main():
 
     # Data generation
     st = time.time()
-    #generator = g.Generator()
-    #generator._set_()
-    #generator.generate_process_patterns()
-    #generator.populate_processes()
+    generator = g.Generator()
+    generator._set_()
+    generator.generate_process_patterns()
+    generator.populate_processes()
     print("--- %s seconds ---" % (time.time() - st))
 
     st_solution = time.time()
