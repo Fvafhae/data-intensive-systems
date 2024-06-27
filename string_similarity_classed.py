@@ -6,11 +6,15 @@ import math as m
 from pyspark.sql.types import FloatType
 
 class StringSimilarity:
-    def __init__(self, core_count=8, jaro_th=0.1):
+    def __init__(self, core_count=8, jaro_th=0.1, edit_th=10, jaro_or_edit="jaro"):
         self.core_count = core_count
         self.spark = self._create_spark_session()
         self.collapsed_data = None
-        self.jaro_th = jaro_th
+        self.jaro_or_edit = jaro_or_edit
+        if jaro_or_edit == "jaro":
+            self.th = jaro_th
+        else:
+            self.th = edit_th
 
     def _create_spark_session(self):
         conf = SparkConf().setAppName("minhash").setMaster("local[8]")
@@ -25,8 +29,9 @@ class StringSimilarity:
 
     @staticmethod
     def jaro_winkler_similarity(s1, s2, winkler_factor=0.1, matching_prefix_length=20):
+       
         if s1 == s2:
-            return 1.0
+            jaro = 1.0
         
         s1_len = len(s1)
         s2_len = len(s2)
@@ -69,7 +74,39 @@ class StringSimilarity:
 
         jaro_winkler = jaro + (winkler_factor * matching_prefix_size * (1 - jaro))
 
+        
         return jaro
+        
+
+    @staticmethod
+    def edit_dist(s1, s2):
+        # print("edit_working")
+        m = len(s1)
+        n = len(s2)
+    
+        # Initialize a matrix to store the edit distances
+        dp = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
+    
+        # Initialize the first row and column with values from 0 to m and 0 to n respectively
+        for i in range(m + 1):
+            dp[i][0] = i
+        for j in range(n + 1):
+            dp[0][j] = j
+    
+        # Fill the matrix using dynamic programming to compute edit distances
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if s1[i - 1] == s2[j - 1]:
+                    # Characters match, no operation needed
+                    dp[i][j] = dp[i - 1][j - 1]
+                else:
+                    # Characters don't match, choose minimum cost among insertion, deletion, or substitution
+                    dp[i][j] = 1 + min(dp[i][j - 1], dp[i - 1][j], dp[i - 1][j - 1])
+    
+        edit_dist = dp[m][n]
+        # print(edit_dist)
+        return edit_dist
+
 
     def load_data(self):
 
@@ -94,6 +131,7 @@ class StringSimilarity:
 
     def calculate_similarity(self, distinct_servers):
         jaro_udf = f.udf(self.jaro_winkler_similarity, FloatType())
+        edit_udf = f.udf(self.edit_dist, FloatType())
         distinct_servers.createOrReplaceTempView("distinct_servers")
 
         query = """
@@ -104,11 +142,17 @@ class StringSimilarity:
         """
 
         cross_joined_server_names = self.spark.sql(query)
-        cross_joined_server_names = cross_joined_server_names.withColumn("Similarity", jaro_udf(cross_joined_server_names.CallerName1, cross_joined_server_names.CallerName2))
+        if self.jaro_or_edit == "jaro":
+            cross_joined_server_names = cross_joined_server_names.withColumn("Similarity", jaro_udf(cross_joined_server_names.CallerName1, cross_joined_server_names.CallerName2))
+        else:
+            cross_joined_server_names = cross_joined_server_names.withColumn("Similarity", edit_udf(cross_joined_server_names.CallerName1, cross_joined_server_names.CallerName2))
         return cross_joined_server_names
 
     def filter_similarity(self, cross_joined_server_names):
-        return cross_joined_server_names.where(cross_joined_server_names.Similarity > self.jaro_th)
+        if self.jaro_or_edit == "jaro":
+            return cross_joined_server_names.where(cross_joined_server_names.Similarity > self.th)
+        else:
+            return cross_joined_server_names.where(cross_joined_server_names.Similarity < self.th)
 
     @staticmethod
     def similarity_assignment(df):
@@ -135,11 +179,14 @@ class StringSimilarity:
         for key in set_dict.keys():
             for value in set_dict[key]:
                 out_dict[value] = key
-
+        
+        print("Similar servers: \n")
+        print(out_dict)
         return out_dict
 
     def apply_similarity_assignment(self, input_data, cross_joined_server_names):
         collapsed_data = input_data.na.replace(self.similarity_assignment(cross_joined_server_names.toPandas()))
+        collapsed_data.show(truncate=False, n=1000)
         return collapsed_data
 
     def run(self):

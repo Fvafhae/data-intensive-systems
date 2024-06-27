@@ -1,113 +1,71 @@
+from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, count, desc, when
 from pyspark.sql.window import Window
-from pyspark.sql.functions import row_number
+from pyspark.sql import *
 
 class CalculateAccuracy:
     
     def __init__(self, spark_session):
         self.spark = spark_session
 
-    def calculate_accuracy(self, match_df = None):
-        print("I'm hereee!")
+    def calculate_accuracy(self, match_df=None):
+        print("Starting accuracy calculation...")
 
         # Read CSV file without headers
         stats = self.spark.read.csv("./output/stats.csv", header=True, inferSchema=True).selectExpr("process_id as id", "pattern_id")
 
-        # match_df = self.spark.read.csv("final_similarity_groups.csv", header=True, inferSchema=True)
-
-        match_df.show()
-
         # Join match_df with stats on id
         joined_df = match_df.join(stats, match_df.id == stats.id).drop(stats.id)
-        print("joined df")
-        joined_df.show()
+        joined_df_to_work_on = joined_df
+        joined_df.show(truncate=False, n=1000)
 
-        # Calculate total count of elements for each pattern_id
-        total_counts_df = joined_df.groupBy("pattern_id").agg(count("*").alias("total_count"))
+        # Initialize an empty DataFrame to store the mappings
+        mappings = []
 
-        # Group by component and pattern_id, and count occurrences
-        grouped_df = joined_df.groupBy("component", "pattern_id").agg(count("*").alias("count"))
-        print("grouped df")
-        grouped_df.show()
+        # Get unique pattern_ids
+        pattern_ids = joined_df_to_work_on.select("pattern_id").distinct().rdd.flatMap(lambda x: x).collect()
 
-        # Join grouped_df with total_counts_df
-        comparison_df = grouped_df.join(total_counts_df, "pattern_id")
-        print("comparison df")
-        comparison_df.show()
+        for curr_pattern_id in pattern_ids:
+                # Find the component with the highest count for this pattern_id
+                best_match = joined_df_to_work_on.filter(joined_df_to_work_on.pattern_id == curr_pattern_id).groupBy("component", "pattern_id").agg(count("*").alias("count")) \
+                                       .orderBy(desc("count")) \
+                                       .first()
+                print(best_match)
 
-        # Filter pairs where component count is more than half of the pattern_id total count
-        # filtered_df = comparison_df.filter(col("count") > (col("total_count") / 2))
-        # print("filtered df")
-        # filtered_df.show()
+                if best_match:
+                    best_component = best_match["component"]
+                    # Append the best match to mappings
+                    mappings.append((best_component, curr_pattern_id))
 
-        # Find the most frequent component-pattern_id pairs
-        window = Window.partitionBy("component").orderBy(col("count").desc())
+                    # Remove matched component-pattern_id pairs from joined_df
+                    joined_df_to_work_on = joined_df_to_work_on.filter(~((joined_df_to_work_on.component == best_component) | (joined_df_to_work_on.pattern_id == curr_pattern_id)))
+                    joined_df_to_work_on.show(truncate=False, n=1000)
 
-        # this was filtered_df not comparison df
-        mapping_df = comparison_df.withColumn("rank", row_number().over(window)) \
-                                .filter(col("rank") == 1) \
-                                .selectExpr("component", "pattern_id as pattern_id_predicted")
-        print("mapping df")
+        # Convert mappings to a DataFrame
+        schema = ["component", "pattern_id"]
+        mapping_df = self.spark.createDataFrame(mappings, schema).selectExpr("component", "pattern_id as mapping_pattern_id")
+        print("mapping_df:")
         mapping_df.show()
+        print("joined_df:")
+        joined_df.show(truncate=False, n=1000)
 
         # Join the original DataFrame with the inferred mapping
         final_comparison_df = joined_df.join(mapping_df, "component", "left_outer")
-        print("final comparison df")
-        final_comparison_df.show()
-
-        # Compare the component predictions with the pattern_id
-        final_comparison_df = final_comparison_df.withColumn("pattern_id_match", col("pattern_id_predicted") == col("pattern_id"))
-        final_comparison_df = final_comparison_df.withColumn("pattern_id_match", when(col("pattern_id_match").isNull(), False).otherwise(col("pattern_id_match"))).orderBy(col("pattern_id"))
-        final_comparison_df.show(n=1000)
-
-        """
-        # Show the results
-        final_comparison_df.select("id", "pattern_id_predicted", "pattern_id", "pattern_id_match")
-
-        # Optionally, count the number of matching and non-matching records
-        match_count = final_comparison_df.filter(col("pattern_id_match") == True).count()
-        mismatch_count = final_comparison_df.filter(col("pattern_id_match") == False).count()
-
-        print(f"Number of matching pattern_ids: {match_count}")
-        print(f"Number of non-matching pattern_ids: {mismatch_count}")
-        self.accuracy = match_count / (match_count + mismatch_count)
-        print(self.accuracy)
-        """
-
-        # Calculate count of true matches for each component-pattern_id pair
-        true_matches_df = final_comparison_df.filter(col("pattern_id_match") == True) \
-                                             .groupBy("component", "pattern_id") \
-                                             .agg(count("*").alias("true_count"))
-        print("true matches df")
-        true_matches_df.show()
-
-        # Find the most frequent component-pattern_id pairs based on true matches
-        true_matches_window = Window.partitionBy("component").orderBy(col("true_count").desc())
-
-        best_mapping_df = true_matches_df.withColumn("rank", row_number().over(true_matches_window)) \
-                                         .filter(col("rank") == 1) \
-                                         .selectExpr("component", "pattern_id as best_pattern_id")
-        print("best mapping df")
-        best_mapping_df.show()
-
-        # Join the original DataFrame with the best inferred mapping based on true matches
-        final_comparison_best_df = final_comparison_df.join(best_mapping_df, "component", "left_outer")
-        print("final comparison best df")
-        final_comparison_best_df.show()
+        final_comparison_df.show(truncate=False, n=1000)
 
         # Compare the component predictions with the actual pattern_id
-        final_comparison_best_df = final_comparison_best_df.withColumn("best_pattern_id_match", col("best_pattern_id") == col("pattern_id"))
-        final_comparison_best_df = final_comparison_best_df.withColumn("best_pattern_id_match", when(col("best_pattern_id_match").isNull(), False).otherwise(col("best_pattern_id_match"))).orderBy(col("pattern_id"))
-        final_comparison_best_df.show(n=1000)
+        final_comparison_df = final_comparison_df.withColumn("best_pattern_id_match", col("pattern_id") == col("mapping_pattern_id"))
+        final_comparison_df.show(truncate=False, n=1000)
 
         # Show the results
-        final_comparison_best_df.select("id", "best_pattern_id", "pattern_id", "best_pattern_id_match").show(truncate=False)
+        final_comparison_df.select("id", "pattern_id", "best_pattern_id_match").show(truncate=False)
 
         # Optionally, count the number of matching and non-matching records
-        match_count = final_comparison_best_df.filter(col("best_pattern_id_match") == True).count()
-        mismatch_count = final_comparison_best_df.filter(col("best_pattern_id_match") == False).count()
+        match_count = final_comparison_df.filter(col("best_pattern_id_match")).count()
+        mismatch_count = final_comparison_df.count() - match_count
 
         print(f"Number of matching pattern_ids: {match_count}")
         print(f"Number of non-matching pattern_ids: {mismatch_count}")
+
         self.accuracy = match_count / (match_count + mismatch_count)
-        print(self.accuracy)
+        print(f"Accuracy: {self.accuracy}")
