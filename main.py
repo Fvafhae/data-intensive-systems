@@ -40,11 +40,11 @@ def main():
     solution_time = time.time() - st_solution
     print(solution_time)
 
-    #acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
-    #acc_calculator.calculate_accuracy(match_df = minhasher.final_similarity_groups)
+    acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
+    acc_calculator.calculate_accuracy(match_df = minhasher.final_similarity_groups)
 
     #solution_time = time.time() - st_solution
-    #final_acc = acc_calculator.accuracy
+    final_acc = acc_calculator.accuracy
 
     #
 

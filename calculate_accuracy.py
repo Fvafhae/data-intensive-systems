@@ -36,14 +36,15 @@ class CalculateAccuracy:
         comparison_df.show()
 
         # Filter pairs where component count is more than half of the pattern_id total count
-        filtered_df = comparison_df.filter(col("count") > (col("total_count") / 2))
-        print("filtered df")
-        filtered_df.show()
+        # filtered_df = comparison_df.filter(col("count") > (col("total_count") / 2))
+        # print("filtered df")
+        # filtered_df.show()
 
         # Find the most frequent component-pattern_id pairs
         window = Window.partitionBy("component").orderBy(col("count").desc())
 
-        mapping_df = filtered_df.withColumn("rank", row_number().over(window)) \
+        # this was filtered_df not comparison df
+        mapping_df = comparison_df.withColumn("rank", row_number().over(window)) \
                                 .filter(col("rank") == 1) \
                                 .selectExpr("component", "pattern_id as pattern_id_predicted")
         print("mapping df")
@@ -59,12 +60,52 @@ class CalculateAccuracy:
         final_comparison_df = final_comparison_df.withColumn("pattern_id_match", when(col("pattern_id_match").isNull(), False).otherwise(col("pattern_id_match"))).orderBy(col("pattern_id"))
         final_comparison_df.show(n=1000)
 
+        """
         # Show the results
         final_comparison_df.select("id", "pattern_id_predicted", "pattern_id", "pattern_id_match")
 
         # Optionally, count the number of matching and non-matching records
         match_count = final_comparison_df.filter(col("pattern_id_match") == True).count()
         mismatch_count = final_comparison_df.filter(col("pattern_id_match") == False).count()
+
+        print(f"Number of matching pattern_ids: {match_count}")
+        print(f"Number of non-matching pattern_ids: {mismatch_count}")
+        self.accuracy = match_count / (match_count + mismatch_count)
+        print(self.accuracy)
+        """
+
+        # Calculate count of true matches for each component-pattern_id pair
+        true_matches_df = final_comparison_df.filter(col("pattern_id_match") == True) \
+                                             .groupBy("component", "pattern_id") \
+                                             .agg(count("*").alias("true_count"))
+        print("true matches df")
+        true_matches_df.show()
+
+        # Find the most frequent component-pattern_id pairs based on true matches
+        true_matches_window = Window.partitionBy("component").orderBy(col("true_count").desc())
+
+        best_mapping_df = true_matches_df.withColumn("rank", row_number().over(true_matches_window)) \
+                                         .filter(col("rank") == 1) \
+                                         .selectExpr("component", "pattern_id as best_pattern_id")
+        print("best mapping df")
+        best_mapping_df.show()
+
+        # Join the original DataFrame with the best inferred mapping based on true matches
+        final_comparison_best_df = final_comparison_df.join(best_mapping_df, "component", "left_outer")
+        print("final comparison best df")
+        final_comparison_best_df.show()
+
+        # Compare the component predictions with the actual pattern_id
+        final_comparison_best_df = final_comparison_best_df.withColumn("best_pattern_id_match", col("best_pattern_id") == col("pattern_id"))
+        final_comparison_best_df = final_comparison_best_df.withColumn("best_pattern_id_match", when(col("best_pattern_id_match").isNull(), False).otherwise(col("best_pattern_id_match"))).orderBy(col("pattern_id"))
+        final_comparison_best_df.show(n=1000)
+
+        # Show the results
+        final_comparison_best_df.select("id", "best_pattern_id", "pattern_id", "best_pattern_id_match").show(truncate=False)
+
+        # Optionally, count the number of matching and non-matching records
+        match_count = final_comparison_best_df.filter(col("best_pattern_id_match") == True).count()
+        mismatch_count = final_comparison_best_df.filter(col("best_pattern_id_match") == False).count()
 
         print(f"Number of matching pattern_ids: {match_count}")
         print(f"Number of non-matching pattern_ids: {mismatch_count}")
