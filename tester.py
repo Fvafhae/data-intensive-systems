@@ -51,10 +51,12 @@ def tester(file_path):
                 minhasher.run()
                 minhasher.final_similarity_groups.toPandas().to_csv('final_similarity_groups.csv')
 
+                solution_time = time.time() - st_solution
+                
                 acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
                 acc_calculator.calculate_accuracy(match_df = minhasher.final_similarity_groups)
 
-                solution_time = time.time() - st_solution
+                
                 final_acc = acc_calculator.accuracy
 
                 minhash_signature_size = minhasher.CONFIG["MinHashSignatureSize"]
