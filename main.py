@@ -30,6 +30,8 @@ def main():
     string_sim.run()
     # string_sim.collapsed_data.show(truncate=False)
 
+    input_length = string_sim.input_length
+
     shing = Shingler(spark_session = string_sim.spark, df = string_sim.collapsed_data)
     shing.run()
 

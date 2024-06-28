@@ -17,6 +17,8 @@ class StringSimilarity:
         else:
             self.th = edit_th
 
+        self.input_length = 0
+
     def _create_spark_session(self):
         conf = SparkConf().setAppName("minhash").setMaster("local[8]")
         conf.set("spark.driver.memory", "4G")
@@ -202,6 +204,7 @@ class StringSimilarity:
     def run(self):
         input_data = self.load_data()
         input_data.cache()
+        self.input_length = input_data.count()
 
         distinct_servers = self.get_distinct_servers(input_data)
 
