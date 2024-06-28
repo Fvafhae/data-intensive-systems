@@ -1,6 +1,5 @@
 import generator as g
 import time
-
 import string_similarity_classed as s
 from shingling import Shingler
 from lsh_no_banding_classed import MinHashLSHProcessor
@@ -8,11 +7,18 @@ from calculate_accuracy import CalculateAccuracy
 import json
 import os
 
-# TODO: Turn the output into a json for easier evaluation
-# TODO: Create a scheme for automatic runs:
-    # Create data once, traverse the parameter values.
-    # Repeat many times.
-    # parameters to be set: jaro_th, jaccard_th, length of the signature matrix.
+# Function to read existing data from the JSON file
+def read_json_file(file_path):
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as json_file:
+            return json.load(json_file)
+    else:
+        return {}
+
+# Function to write data to the JSON file
+def write_json_file(file_path, data):
+    with open(file_path, 'w') as json_file:
+        json.dump(data, json_file, indent=4)
 
 def tester(file_path):
     test_case_count = 2
@@ -33,7 +39,7 @@ def tester(file_path):
             number_of_gold_patterns = CONFIG["PROCESS_PATTERN_NUMBER"]
             number_of_processes = CONFIG["PROCESSES_TO_GENERATE"]
 
-        # investigate jaro threshold 0.5 - 1.0
+        # investigate jaro threshold 0.5 - 1.0
         for jaro_loop in range(6, 11):
             jaro_th = jaro_loop * 0.1
             # investigate jaccard dist 0.1 - 0.6
@@ -60,42 +66,31 @@ def tester(file_path):
                     acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
                     acc_calculator.calculate_accuracy(match_df = minhasher.final_similarity_groups)
 
-                    
                     final_acc = acc_calculator.accuracy
-
                     minhash_signature_size = minhasher.MinHashSignatureSize
 
                     result = {
-                            "id": str(i) + "_" + str(jaro_loop) + "_" + str(jaccard_loop) + "_" + str(minhash_signature_size),
-                            "process_max_depth": process_max_depth,
-                            "process_max_length": process_max_length,
-                            "number_of_gold_patterns": number_of_gold_patterns,
-                            "number_of_processes": number_of_processes,
-                            "solution_time": solution_time,
-                            "accuracy": final_acc,
-                            "jaro_th": jaro_th,
-                            "jaccard_th": jaccard_th,
-                            "minhash_signature_size": minhash_signature_size
+                        "id": str(i) + "_" + str(jaro_loop) + "_" + str(jaccard_loop) + "_" + str(minhash_signature_size),
+                        "process_max_depth": process_max_depth,
+                        "process_max_length": process_max_length,
+                        "number_of_gold_patterns": number_of_gold_patterns,
+                        "number_of_processes": number_of_processes,
+                        "solution_time": solution_time,
+                        "accuracy": final_acc,
+                        "jaro_th": jaro_th,
+                        "jaccard_th": jaccard_th,
+                        "minhash_signature_size": minhash_signature_size
                     }
-                        
-                    # Function to read existing data from the JSON file
-                    def read_json_file(file_path):
-                        if os.path.exists(file_path):
-                            with open(file_path, 'r') as json_file:
-                                return json.load(json_file)
-                        else:
-                            return {}
-                            
+
+                    # Read existing data
                     existing_data = read_json_file(file_path)
+                    
+                    # Update existing data
+                    existing_data[result["id"]] = result
+                    
+                    # Write updated data back to the file
+                    write_json_file(file_path, existing_data)
 
-                    with open(file_path, 'w') as file:
-
-                        existing_data[str(i) + str(jaro_loop) + str(jaccard_loop)] = result
-                        
-                        # file_data[str(test_case_count) + str(jaro_loop) + str(jaccard_loop)] = result
-                        # convert back to json.
-                        json.dump(existing_data, file, indent=4)
-                            
                     string_sim.spark.stop()
 
-tester(file_path = "./output/test_results.json")
+tester(file_path="./output/test_results.json")
