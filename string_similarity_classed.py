@@ -19,8 +19,8 @@ class StringSimilarity:
 
     def _create_spark_session(self):
         conf = SparkConf().setAppName("minhash").setMaster("local[8]")
-        conf.set("spark.driver.memory", "1G")
-        conf.set("spark.driver.maxResultSize", "1g")
+        conf.set("spark.driver.memory", "4G")
+        conf.set("spark.driver.maxResultSize", "4g")
         conf.set("spark.executor.memory", "8G")
         conf.set("spark.jars.packages", "graphframes:graphframes:0.8.2-spark3.1-s_2.12")
         sc = SparkContext(conf=conf)

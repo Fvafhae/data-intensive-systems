@@ -12,10 +12,10 @@ from graphframes import GraphFrame
 class MinHashLSHProcessor:
     CONFIG = {
         "CoreCount": 8,
-        "MinHashSignatureSize": 100
+        "MinHashSignatureSize": 10
     }
 
-    def __init__(self, spark_session, sparse_vector_df, jaccard_th):
+    def __init__(self, spark_session, sparse_vector_df, jaccard_th, signature_size):
         self.spark = spark_session
         self.vector_list = None
         self.df = sparse_vector_df
@@ -23,16 +23,17 @@ class MinHashLSHProcessor:
         self.similarity_matrix = None
         self.final_similarity_groups = None
         self.jaccard_th = jaccard_th
+        self.MinHashSignatureSize = signature_size
 
     
     def create_signatures(self):
-        mh = MinHashLSH(inputCol="sparse_vectors", outputCol="signatures", numHashTables=self.CONFIG["MinHashSignatureSize"], seed=0)
+        mh = MinHashLSH(inputCol="sparse_vectors", outputCol="signatures", numHashTables=self.MinHashSignatureSize, seed=0)
         model = mh.fit(self.df)
         self.signature_frame = model.transform(self.df).cache()
 
     def compute_similarity(self):
         #st = time.time()
-        mh = MinHashLSH(inputCol="sparse_vectors", outputCol="signatures", numHashTables=self.CONFIG["MinHashSignatureSize"], seed=0)
+        mh = MinHashLSH(inputCol="sparse_vectors", outputCol="signatures", numHashTables=self.MinHashSignatureSize, seed=0)
         
         model = mh.fit(self.df)
         self.similarity_matrix = model.approxSimilarityJoin(self.signature_frame, self.signature_frame, self.jaccard_th, distCol="JaccardDistance")\

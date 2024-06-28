@@ -26,14 +26,14 @@ def main():
     st_solution = time.time()
 
     # string similarity is used
-    string_sim = s.StringSimilarity(jaro_or_edit="jaro", edit_th=5, jaro_th=0.8)
+    string_sim = s.StringSimilarity(jaro_or_edit="jaro", edit_th=5, jaro_th=0.7)
     string_sim.run()
     # string_sim.collapsed_data.show(truncate=False)
 
     shing = Shingler(spark_session = string_sim.spark, df = string_sim.collapsed_data)
     shing.run()
 
-    minhasher = MinHashLSHProcessor(spark_session=string_sim.spark, sparse_vector_df=shing.sparse_vectors_df, jaccard_th=0.2)
+    minhasher = MinHashLSHProcessor(spark_session=string_sim.spark, sparse_vector_df=shing.sparse_vectors_df, jaccard_th=0.2, signature_size=20)
     minhasher.run()
     minhasher.final_similarity_groups.toPandas().to_csv('final_similarity_groups.csv')
 
