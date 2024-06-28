@@ -39,6 +39,7 @@ def tester(file_path):
             number_of_gold_patterns = CONFIG["PROCESS_PATTERN_NUMBER"]
             number_of_processes = CONFIG["PROCESSES_TO_GENERATE"]
 
+
         # investigate jaro threshold 0.5 - 1.0
         for jaro_loop in range(6, 11):
             jaro_th = jaro_loop * 0.1
@@ -53,6 +54,8 @@ def tester(file_path):
                     string_sim = s.StringSimilarity(jaro_th=jaro_th)
                     string_sim.run()
                     string_sim.collapsed_data.show(truncate=False)
+
+                    input_length = string_sim.input_length
 
                     shing = Shingler(spark_session = string_sim.spark, df = string_sim.collapsed_data)
                     shing.run()
@@ -79,7 +82,8 @@ def tester(file_path):
                         "accuracy": final_acc,
                         "jaro_th": jaro_th,
                         "jaccard_th": jaccard_th,
-                        "minhash_signature_size": minhash_signature_size
+                        "minhash_signature_size": minhash_signature_size,
+                        "input_file_length": input_length
                     }
 
                     # Read existing data
