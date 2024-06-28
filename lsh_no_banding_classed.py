@@ -12,7 +12,7 @@ from graphframes import GraphFrame
 class MinHashLSHProcessor:
     CONFIG = {
         "CoreCount": 8,
-        "MinHashSignatureSize": 100
+        "MinHashSignatureSize": 10
     }
 
     def __init__(self, spark_session, sparse_vector_df, jaccard_th):

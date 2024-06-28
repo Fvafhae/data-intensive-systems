@@ -34,7 +34,7 @@ def tester(file_path):
             number_of_processes = CONFIG["PROCESSES_TO_GENERATE"]
 
         # investigate jaro threshold 0.5 - 1.0
-        for jaro_loop in range(5, 11):
+        for jaro_loop in range(3, 11):
             jaro_th = jaro_loop * 0.1
             # investigate jaccard dist 0.1 - 0.6
             for jaccard_loop in range(1, 6):
