@@ -26,11 +26,13 @@ class Generator:
         type: str  # Type of the event ('Request' or 'Response')
         id: int  # Identifier for the event
 
+
     def __init__(self):
         """
         Initializes the Generator with character set for random string generation.
         """
         self.chars = string.ascii_uppercase + string.digits  # Uppercase letters and digits
+
 
     def _set_(self, config_path="config.yaml"):
         """
@@ -69,18 +71,21 @@ class Generator:
             for _ in range(self.CONFIG["TYPE_NUMBER"])
         }
 
-        # Add servers to the definitions
+        # Add server instances to the definitions
         for server_type, additions in self.SERVER_DEFINITIONS.items():
             self.add_server(server_type, server_type)
 
-            for prefix in additions['prefixes']:
-                self.add_server(server_type, prefix + server_type)
+            if self.CONFIG["TYPE_PREFIX_ENABLED"]:
+                for prefix in additions['prefixes']:
+                    self.add_server(server_type, prefix + server_type)
 
+                    if self.CONFIG["TYPE_SUFFIX_ENABLED"]:
+                        for suffix in additions['suffixes']:
+                            self.add_server(server_type, prefix + server_type + suffix)
+
+            if self.CONFIG["TYPE_SUFFIX_ENABLED"]:
                 for suffix in additions['suffixes']:
-                    self.add_server(server_type, prefix + server_type + suffix)
-
-            for suffix in additions['suffixes']:
-                self.add_server(server_type, server_type + suffix)
+                    self.add_server(server_type, server_type + suffix)
 
         # Save server definitions to a JSON file
         types_path = "./output/types.json"
@@ -90,6 +95,7 @@ class Generator:
 
         # Initialize patterns list
         self.patterns = []
+
 
     def _serialize_set_(self, obj):
         """
@@ -105,6 +111,7 @@ class Generator:
             return list(obj)
         return obj
 
+
     def random_string(self):
         """
         Generates a random string based on the character set and length range in the config.
@@ -116,6 +123,7 @@ class Generator:
             self.chars,
             k=random.randrange(*self.CONFIG["TYPE_STRING_LENGTH_RANGE"])
         ))
+
 
     def add_server(self, server_type, server_name):
         """
