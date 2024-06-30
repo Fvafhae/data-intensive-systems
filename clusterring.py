@@ -129,7 +129,6 @@ class Clustering:
 
 
 
-
 if __name__ == "__main__":
     import spark_config
     import time

@@ -9,10 +9,11 @@ from collections import defaultdict
 # os.environ['PYSPARK_PYTHON'] = r"C:\Users\milot\AppData\Local\Programs\Python\Python311\python.exe"
 
 class Shingler:
-    def __init__(self, spark_session, df):
+    def __init__(self, spark_session, df, debug=False):
         self.spark = spark_session
         self.df = df
         self.bucket_count = 10**8
+        self.debug = debug
 
     def process_data(self):
         grouped_df = self.df.filter(col("EventType") == "Request") \
@@ -64,7 +65,9 @@ class Shingler:
 
     def run(self):
         self.process_data()
-        self.show_result()
+
+        if self.debug:
+            self.show_result()
 
 if __name__ == "__main__":
     processor = Shingler()

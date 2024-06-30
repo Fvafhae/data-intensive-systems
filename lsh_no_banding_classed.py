@@ -15,7 +15,7 @@ class MinHashLSHProcessor:
         "MinHashSignatureSize": 10
     }
 
-    def __init__(self, spark_session, sparse_vector_df, jaccard_th, signature_size):
+    def __init__(self, spark_session, sparse_vector_df, jaccard_th, signature_size, debug=False):
         self.spark = spark_session
         self.vector_list = None
         self.df = sparse_vector_df
@@ -24,7 +24,7 @@ class MinHashLSHProcessor:
         self.final_similarity_groups = None
         self.jaccard_th = jaccard_th
         self.MinHashSignatureSize = signature_size
-
+        self.debug = debug
     
     def create_signatures(self):
         mh = MinHashLSH(inputCol="sparse_vectors", outputCol="signatures", numHashTables=self.MinHashSignatureSize, seed=0)
@@ -57,7 +57,9 @@ class MinHashLSHProcessor:
         nonsimilars = self.signature_frame.selectExpr('PID').subtract(result.selectExpr('id'))
         nonsimilars = nonsimilars.withColumn("component", nonsimilars.PID)
         self.final_similarity_groups = result.union(nonsimilars).cache()
-        self.final_similarity_groups.show(n=500, truncate=False)
+        
+        if self.debug:
+            self.final_similarity_groups.show(n=500, truncate=False)
 
     def run(self):
         self.create_signatures()

@@ -7,7 +7,7 @@ from pyspark.sql.types import FloatType
 from collections import defaultdict
 
 class StringSimilarity:
-    def __init__(self, spark, core_count=8, jaro_th=0.1, edit_th=10, jaro_or_edit="jaro"):
+    def __init__(self, spark, core_count=8, jaro_th=0.1, edit_th=10, jaro_or_edit="jaro", debug=False):
         self.core_count = core_count
         self.spark = spark
         # self.spark = self._create_spark_session()
@@ -19,6 +19,8 @@ class StringSimilarity:
             self.th = edit_th
 
         self.input_length = 0
+
+        self.debug = debug
 
     def _create_spark_session(self):
         conf = SparkConf().setAppName("minhash").setMaster("local[8]")
@@ -214,7 +216,9 @@ class StringSimilarity:
         filtered_similarity = self.filter_similarity(cross_joined_server_names)
 
         self.collapsed_data = self.apply_similarity_assignment(input_data, filtered_similarity)
-        self.collapsed_data.show(n=500, truncate=False)
+
+        if self.debug:
+            self.collapsed_data.show(n=500, truncate=False)
 
 
 if __name__ == "__main__":
