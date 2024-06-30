@@ -7,7 +7,7 @@ from lsh_no_banding_classed import MinHashLSHProcessor
 from calculate_accuracy import CalculateAccuracy
 
 from clusterring import Clustering
-
+import output
 import spark_config
 
 # TODO: Turn the output into a json for easier evaluation
@@ -33,6 +33,7 @@ def main():
     # string similarity is used
     string_sim = s.StringSimilarity(spark=spark, jaro_or_edit="jaro", edit_th=5, jaro_th=0.8)
     string_sim.run()
+
     # string_sim.collapsed_data.show(truncate=False)
     print("Start Clustering...")
     clustering = Clustering(spark_session=spark)
@@ -54,22 +55,30 @@ def main():
 
     # features = ss._merge_selection_(minhasher.final_similarity_groups, features)
     
-    minhasher.final_similarity_groups.show(n=500)
+    minhasher.final_similarity_groups.show(n=50)
 
     print("Calculate Accuracy\n")
 
     acc_calculator = CalculateAccuracy(spark_session=string_sim.spark)
     acc_calculator.calculate_accuracy(match_df = minhasher.final_similarity_groups)
 
-    #solution_time = time.time() - st_solution
+    solution_time = time.time() - st_solution
     final_acc = acc_calculator.accuracy
+    print("Part 1 Output\n")
+
+    output.part1_output(minhasher.final_similarity_groups, string_sim.collapsed_data)
+    output.part1_observations(minhasher.final_similarity_groups, string_sim.collapsed_data)
 
     print("Calculate clustering features\n")
 
     data = clustering._prepare_all_features_(minhasher.final_similarity_groups, features=features)
     print("Predict clusters\n")
 
-    clustering.make_predictions(data)
+    clusters = clustering.make_predictions(data)
+
+    print("Part 2 Output\n")
+    output.part2_observations(minhasher.final_similarity_groups, string_sim.collapsed_data, clusters)
+
 
 """
 def main():

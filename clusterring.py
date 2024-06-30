@@ -5,6 +5,7 @@ from pyspark.sql.types import StructType, StructField, StringType, DoubleType, I
 from pyspark.ml.linalg import Vectors, VectorUDT, SparseVector
 from collections import defaultdict
 import numpy as np
+import pandas as pd
 from pyspark.ml.clustering import KMeans
 from pyspark.ml.evaluation import ClusteringEvaluator
 from pyspark.ml.feature import VectorAssembler
@@ -121,9 +122,14 @@ class Clustering:
                     .agg(collect_list(col = 'component').alias('processes'))
         test.toPandas().to_csv("clusters.csv", header=True)
         test.show()
-        # return predictions
+        return predictions
     
-        
+    def output_observations(self, data=None):
+        data = pd.read_csv("clusterss.csv", header=0)
+
+
+
+
 if __name__ == "__main__":
     import spark_config
     import time
@@ -132,5 +138,7 @@ if __name__ == "__main__":
     spark_session = spark_config._create_spark_session()
     c = Clustering(spark_session)
     
-    c.make_predictions()
+    # c.make_predictions()
+
+    c.output_observations()
     print(time.time() - solution_time)
