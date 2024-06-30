@@ -41,6 +41,8 @@ def main():
     features = clustering._calculate_initial_features_(string_sim.collapsed_data)
     print("Start Shingling...")
 
+    input_length = string_sim.input_length
+
     shing = Shingler(spark_session = string_sim.spark, df = string_sim.collapsed_data)
     shing.run()
 
