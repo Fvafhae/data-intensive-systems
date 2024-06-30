@@ -3,9 +3,10 @@
 /spark_env
 
 # Data files
+*.txt
 *.csv 
 *.json
-/output*
+/output
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
